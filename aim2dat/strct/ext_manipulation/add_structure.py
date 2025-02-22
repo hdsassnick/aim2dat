@@ -16,6 +16,7 @@ import numpy as np
 from aim2dat.strct.ext_manipulation.decorator import (
     external_manipulation_method,
 )
+from aim2dat.strct.ext_manipulation.utils import _check_distances
 from aim2dat.strct.strct import Structure
 from aim2dat.strct.ext_manipulation.rotate_structure import rotate_structure
 from aim2dat.strct.strct_misc import _calc_atomic_distance
@@ -93,9 +94,9 @@ def add_structure_random(
         guest_strct1.set_positions(guest_positions)
 
         new_structure = _merge_structures(structure, guest_strct1, wrap)
-
+        new_indices = list(range(len(new_structure) - len(guest_strct["elements"]), len(new_structure)))
         is_added = _check_distances(
-            new_structure, len(guest_strct["elements"]), dist_threshold, True
+            new_structure, new_indices, dist_threshold, True
         )
         if is_added:
             return new_structure, "_added-" + guest_strct_label
@@ -277,6 +278,7 @@ def add_structure_coord(
         ref_dirs,
         dist_constraints,
     )
+    new_indices = list(range(len(new_structure) - len(guest_strct["elements"]), len(new_structure)))
 
     # Optimize positions to reduce score
     if len(dist_constraints) > 0:
@@ -294,12 +296,12 @@ def add_structure_coord(
                         dist_constraints,
                     )
                     if score0 < score and _check_distances(
-                        new_strct0, len(guest_strct["elements"]), dist_threshold, True
+                        new_strct0, new_indices, dist_threshold, True
                     ):
                         score = score0
                         new_structure = new_strct0
     else:
-        _check_distances(new_structure, len(guest_strct["elements"]), dist_threshold, False)
+        _check_distances(new_structure, new_indices, dist_threshold, False)
     return new_structure, "_added-" + guest_strct_label
 
 
@@ -309,6 +311,7 @@ def add_structure_position(
     position: List[float],
     guest_structure: Union[Structure, str] = "CH3",
     wrap: bool = False,
+    dist_threshold: float = None,
     change_label: bool = False,
 ) -> Structure:
     """
@@ -327,6 +330,9 @@ def add_structure_position(
         or the element symbol to add one single atom.
     wrap : bool (optional)
         Wrap atomic positions back into the unit cell.
+    dist_threshold : float or None (optional)
+        Check the distances between all site pairs of the host and guest structure to ensure that
+        none of the added atoms collide.
     change_label : bool (optional)
         Add suffix to the label of the new structure highlighting the performed manipulation.
 
@@ -345,6 +351,8 @@ def add_structure_position(
     guest_strct0.set_positions(guest_positions)
 
     new_structure = _merge_structures(structure, guest_strct0, wrap)
+    new_indices = list(range(len(new_structure) - len(guest_strct["elements"]), len(new_structure)))
+    _check_distances(new_structure, new_indices, dist_threshold, False)
 
     return new_structure, "_added-" + guest_strct_label
 
@@ -480,22 +488,3 @@ def _merge_structures(host_strct, guest_strct, wrap):
         for site_attr, val in new_structure["site_attributes"].items():
             val.append(guest_strct["site_attributes"].get(site_attr, None))
     return Structure(**new_structure, wrap=wrap)
-
-
-def _check_distances(
-    new_structure: Structure, n_atoms: int, dist_threshold: Union[float, None], silent: bool
-):
-    if dist_threshold is None:
-        return True
-
-    indices_old = list(range(len(new_structure) - n_atoms))
-    indices_new = list(range(len(new_structure) - n_atoms, len(new_structure)))
-    indices1, indices2 = zip(*itertools.product(indices_old, indices_new))
-    dists = new_structure.calculate_distance(
-        list(indices1), list(indices2), backfold_positions=True
-    )
-    if any(d0 < dist_threshold for d0 in dists.values()):
-        if not silent:
-            raise ValueError("Atoms are too close to each other.")
-        return False
-    return True

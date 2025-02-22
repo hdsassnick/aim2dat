@@ -10,7 +10,8 @@ from packaging import version
 
 _ext_interfaces_deps = {
     "aiida": [("aiida-core", "2.0", "3.0")],
-    "ase_atoms": [("ase", "3.22.0", None)],
+    "ase_atoms": [("ase", "3.22.0", None)], # TODO change version number here too?
+    "ase_calculator": [("ase", "3.24.0", None)],
     "dscribe": [("dscribe", "1.2.2", None)],
     "graphviz": [("graphviz", "0.19.1", None)],
     "hdf5": [("h5py", "3.7.0", None)],

@@ -506,6 +506,19 @@ class Structure(AnalysisMixin, ManipulationMixin):
             )
         )
 
+    def get_attribute(self, key: str, value=None):
+        """
+        Get attribute.
+
+        Parameters
+        ----------
+        key : str
+            Key of the attribute.
+        value
+            Default value to return if attribute does not exist.
+        """
+        return copy.deepcopy(self._attributes.get(key, None))
+
     def set_attribute(self, key: str, value):
         """
         Set attribute.
