@@ -149,9 +149,10 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
         e_structure = self._get_energy(self.structure)
         e_component = self._get_energy(self.components[0])
         for i in range(self.n_steps):
-            comp_key = list(self._component_indices.keys())[int(rng.random() * len(self._component_indices))]
+            comp_key = ""
             self.insert_energies.append(self._move_wrapper(InsertComponent, comp_key, rng) - e_structure - e_component)
             if self.n_components[0] > 0:
+                comp_key = list(self._component_indices.keys())[int(rng.random() * len(self._component_indices))]
                 if comp_key in self._remove_energies_hist:
                     self.remove_energies.append(self._remove_energies_hist[comp_key])
                 else:
