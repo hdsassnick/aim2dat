@@ -11,12 +11,15 @@ from aim2dat.utils.units import energy, constants
 class BaseMove(abc.ABC):
     n_rand_nrs = 3
 
-    def __init__(self, structure, component, ase_calculator):
-        self.structure = structure.copy()
-        self.component = component.copy()
-        self.new_structure = None
-
+    def __init__(self, structure, component, component_key, component_indices, dist_threshold, ase_calculator):
+        self.structure = structure
+        self.component = component
+        self.component_key = component_key
+        self.component_indices = component_indices
+        self.dist_threshold = dist_threshold
         self.ase_calculator = ase_calculator
+
+        self.new_structure = None
 
 
     @abc.abstractmethod
@@ -30,7 +33,6 @@ class BaseMove(abc.ABC):
             return False
 
         e_diff = e - self.structure.get_attribute("ref_energy")
-        # TODO check here if energies are available?
         return rand_nr < min(1.0, np.exp(-1.0 * e_diff / (temperature * constants.kb * energy.j)))
 
     def get_energy(self):
@@ -46,91 +48,83 @@ class BaseMove(abc.ABC):
         else:
             raise ValueError("No viable backend found to evaluate the energy.")
 
-    def get_all_component_indices(self):
-        indices = {}
-        for idx, kind in enumerate(self.structure.kinds):
-            if kind is None:
-                continue
-            if self.component.label in kind:
-                indices.setdefault(kind, []).append(idx)
-        return indices
+    def _insert_component(self, structure, rand_nrs, component_key=None):
+        if component_key is None:
+            ind_numbers = [int(v.split("_")[-1]) for v in self.component_indices]
+            max_idx = max(ind_numbers) if len(ind_numbers) > 0 else 0
+            component_key = f"{self.component.label}_{max_idx + 1}"
 
+        # TODO use add_structure_random and adjust interface to do so.
+        self.component = rotate_structure(self.component, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4], change_label=False)
+        self.component.kinds = [component_key] * len(self.component)
+        pos = (np.array(structure.cell).T).dot(np.array(rand_nrs[4:7]))
+        try:
+            new_structure = add_structure_position(
+                structure, guest_structure=self.component, position=pos, dist_threshold=self.dist_threshold, change_label=False
+            )
+        except ValueError: # TODO be more specific on error message.
+            return None
 
-    def get_random_component_indices(self, rand_nr):
-        indices = self.get_all_component_indices()
-        kind = list(indices.keys())[int(rand_nr * len(indices))]
-        return kind, indices[kind]
+        self.component_indices[component_key] = list(range(len(structure), len(structure) + len(self.component)))
+        return new_structure
 
-
-def _insert_component(structure, component, component_label, rand_nrs):
-    # TODO use add_structure_random and adjust interface to do so.
-    component = rotate_structure(component, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4], change_label=False)
-    component.kinds = [component_label] * len(component)
-    pos = (np.array(structure.cell).T).dot(np.array(rand_nrs[4:7]))
-    try:
-        new_structure = add_structure_position(
-            structure, guest_structure=component, position=pos, dist_threshold=1.25, change_label=False
-        )
-    except ValueError: # TODO be more specific on error message.
-        return None
-    return new_structure
+    def _remove_component(self, structure):
+        indices =  self.component_indices.pop(self.component_key)
+        # Shift indices to match the new structure:
+        for key, val in self.component_indices.items():
+            self.component_indices[key] = [v - sum(1 if v > i else 0 for i in indices) for v in val]
+        return structure.delete_atoms(site_indices=indices, change_label=False)
 
 
 class RotateComponent(BaseMove):
-    n_rand_nrs = 5
+    n_rand_nrs = 4
 
     def perform_move(self, rand_nrs):
-        _, site_indices = self.get_random_component_indices(rand_nrs[0])
+        #_, site_indices = self.get_random_component_indices(rand_nrs[0])
         try:
             self.new_structure = rotate_structure(
-                self.structure, angles=rand_nrs[1] * 360.0, vector=rand_nrs[2:5],
-                site_indices=site_indices, change_label=False, dist_threshold=1.25
+                self.structure, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4],
+                site_indices=self.component_indices[self.component_key], dist_threshold=self.dist_threshold, change_label=False
             )
         except ValueError: # TODO be more specific on error message.
             pass
 
 
 class TranslateComponent(BaseMove):
-    n_rand_nrs = 5
+    n_rand_nrs = 4
 
     def perform_move(self, rand_nrs):
-        _, site_indices = self.get_random_component_indices(rand_nrs[0])
-        #comp_indices = self.get_component_indices()
-        #kind = list(comp_indices.keys())[int(rand_nrs[0] * len(comp_indices))]
-        v = np.array(rand_nrs[1:4]) - 0.5
-        v *= rand_nrs[4] * np.linalg.norm(v)
+        v = np.array(rand_nrs[0:3]) - 0.5
+        v *= rand_nrs[1] * np.linalg.norm(v)
         try:
-            self.new_structure = translate_structure(self.structure, site_indices=site_indices, vector=v, dist_threshold=1.25, change_label=False)
+            self.new_structure = translate_structure(
+                self.structure, site_indices=self.component_indices[self.component_key], vector=v,
+                dist_threshold=self.dist_threshold, change_label=False
+            )
         except ValueError: #TODO be more specific on error message or add new error for AtomsTooClose.
             pass
 
 
 class RemoveComponent(BaseMove):
-    n_rand_nrs = 1
+    n_rand_nrs = 0
 
-    def perform_move(self, rand_nrs):
-        _, site_indices = self.get_random_component_indices(rand_nrs[0])
-        self.new_structure = self.structure.delete_atoms(site_indices=site_indices, change_label=False)
+    def perform_move(self, _):
+        self.new_structure = self._remove_component(self.structure)
 
 
 class InsertComponent(BaseMove):
     n_rand_nrs = 7
 
     def perform_move(self, rand_nrs):
-        comp_indices = self.get_all_component_indices()
-        ind_numbers = [int(v.split("_")[-1]) for v in comp_indices]
-        max_idx = max(ind_numbers) if len(ind_numbers) > 0 else 0
-        new_kind = f"{self.component.label}_{max_idx + 1}"
-        self.new_structure = _insert_component(self.structure, self.component, new_kind, rand_nrs)
+        self.new_structure = self._insert_component(self.structure, rand_nrs)
 
 
 class ReinsertComponent(BaseMove):
-    n_rand_nrs = 8
+    n_rand_nrs = 7
 
     def perform_move(self, rand_nrs):
-        label, site_indices = self.get_random_component_indices(rand_nrs[0])
-        new_strct = self.structure.delete_atoms(site_indices=site_indices, change_label=False)
-        self.new_structure = _insert_component(new_strct, self.component, label, rand_nrs[1:])
+        self.new_structure = self._insert_component(self._remove_component(self.structure), rand_nrs, self.component_key)
+
 
 
 
