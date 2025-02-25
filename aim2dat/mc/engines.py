@@ -12,6 +12,10 @@ from aim2dat.strct.ext_manipulation import add_structure_random
 # TODO implement general logging function.
 class _BaseMonteCarlo:
 
+    def __init__(self, n_print: int = 10):
+        self.n_print = n_print
+        self.dist_threshold = 1.25 # TODO add this.
+
     def _prepare_structure(self):
         if len(self.components) > 1:
             raise ValueError("Simulations with multiple components are not yet supported.")
@@ -49,15 +53,16 @@ class _BaseMonteCarlo:
         return structure.attributes["ref_energy"]
 
     def _print_stdout(self, step, energy):
-        if step % 1000 == 0:
-            print(f"Step: {step}, energy: {energy}")
+        if step % int(self.n_steps / self.n_print) == 0:
+            print(f"Step: {step}, energy: {energy}", flush=True)
 
 
 
 
 class MonteCarlo(_BaseMonteCarlo):
 
-    def __init__(self, structure, components, n_components, moves, temperature: float, n_steps: int, n_store: int = None, random_seed: int = None, ase_calculator = None):
+    def __init__(self, structure, components, n_components, moves, temperature: float, n_steps: int, n_print: int = 10, n_store: int = 10, random_seed: int = None, ase_calculator = None):
+        _BaseMonteCarlo.__init__(self, n_print=n_print)
         # TODO Distinguish between canonical and grand canonical MC
         # TODO Add properties to validate input parameters.
         self.structure = structure
@@ -69,7 +74,7 @@ class MonteCarlo(_BaseMonteCarlo):
 
         self.temperature = temperature
         self.n_steps = n_steps # TODO implement logic with steps and cycles.
-        self.n_store = 10 if n_store is None else n_store
+        self.n_store = n_store
 
         self.random_seed = random_seed
         self.ase_calculator = ase_calculator
@@ -101,7 +106,8 @@ class MonteCarlo(_BaseMonteCarlo):
 
 
 class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
-    def __init__(self, structure, components, n_components, n_steps: int, random_seed: int = None, ase_calculator = None):
+    def __init__(self, structure, components, n_components, n_steps: int, n_print: int = 10, random_seed: int = None, ase_calculator = None):
+        _BaseMonteCarlo.__init__(self, n_print=n_print)
         # TODO Distinguish between canonical and grand canonical MC
         # TODO Add properties to validate input parameters.
         self.structure = structure
