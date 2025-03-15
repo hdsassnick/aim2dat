@@ -28,14 +28,18 @@ from aim2dat.strct.strct_validation import (
     _structure_validate_elements,
     _structure_validate_positions,
 )
-from aim2dat.strct.mixin import AnalysisMixin, ManipulationMixin
+from aim2dat.strct.mixin import AnalysisMixin, ManipulationMixin, classproperty
 import aim2dat.utils.chem_formula as utils_cf
 import aim2dat.utils.print as utils_pr
 from aim2dat.utils.maths import calc_angle
+from aim2dat.utils.element_properties import get_atomic_number
 
 
 def _compare_function_args(args1, args2):
     """Compare function arguments to check if a property needs to be recalculated."""
+    if len(args1) != len(args2):
+        return False
+
     for kwarg, value1 in args1.items():
         if value1 != args2[kwarg]:
             return False
@@ -268,6 +272,7 @@ class Structure(AnalysisMixin, ManipulationMixin):
         self._elements = elements
         self._element_dict = _create_index_dict(elements)
         self._chem_formula = utils_cf.transform_list_to_dict(elements)
+        self._numbers = tuple(get_atomic_number(el) for el in elements)
 
     @property
     def chem_formula(self) -> dict:
@@ -275,6 +280,11 @@ class Structure(AnalysisMixin, ManipulationMixin):
         Return chemical formula.
         """
         return self._chem_formula
+
+    @property
+    def numbers(self) -> tuple:
+        """Return the atomic numbers of the structure."""
+        return self._numbers
 
     @property
     def positions(self) -> tuple:
@@ -374,6 +384,7 @@ class Structure(AnalysisMixin, ManipulationMixin):
     def site_attributes(self, value: dict):
         if value is None:
             value = {}
+        self._site_attributes = {}
         for key, val in value.items():
             self.set_site_attribute(key, val)
 
@@ -553,24 +564,46 @@ class Structure(AnalysisMixin, ManipulationMixin):
         self._site_attributes[key] = tuple(values)
 
     @classmethod
-    @property
-    def import_methods(cls) -> list:
-        """list: Return import methods."""
+    def list_import_methods(cls) -> list:
+        """
+        Get a list with the function names of all available import methods.
+
+        Returns
+        -------
+        list:
+            Return a list of all available import methods.
+        """
         import_methods = []
         for name, method in cls.__dict__.items():
             if getattr(method, "_is_import_method", False):
                 import_methods.append(name)
         return import_methods
 
+    @classproperty
+    def import_methods(cls) -> list:
+        """list: Return import methods. This property is depreciated and will be removed soon."""
+        return cls.list_import_methods()
+
     @classmethod
-    @property
-    def export_methods(cls) -> list:
-        """list: Return export methods."""
+    def list_export_methods(cls) -> list:
+        """
+        Get a list with the function names of all available export methods.
+
+        Returns
+        -------
+        list:
+            Return a list of all available export methods.
+        """
         export_methods = []
-        for name, method in Structure.__dict__.items():
+        for name, method in cls.__dict__.items():
             if getattr(method, "_is_export_method", False):
                 export_methods.append(name)
         return export_methods
+
+    @classproperty
+    def export_methods(cls) -> list:
+        """list: Return export methods. This property is depreciated and will be removed soon."""
+        return cls.list_export_methods()
 
     @import_method
     @classmethod

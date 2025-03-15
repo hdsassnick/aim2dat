@@ -9,14 +9,16 @@ Version 0.3.0
 
 * A parser for xml output files of Quantum ESPRESSO is added (`PR #102 <https://github.com/aim2dat/aim2dat/pull/102>`_).
 * Added interface to MOFXDB (https://mof.tech.northwestern.edu/) to the ``strct.StructureImporter`` class (`PR #94 <https://github.com/aim2dat/aim2dat/pull/94>`_).
-* The newly implemented ``strct.ext_manipulation.add_structure_position`` function adds a guest structure at a given position (`PR #105 <https://github.com/aim2dat/aim2dat/pull/105>`_).
-* The newly implemented ``strct.ext_manipulation.rotate_structure`` function rotates a sub structure around a certain point or vector (`PR #105 <https://github.com/aim2dat/aim2dat/pull/105>`_).
 * The ``strct.Structure`` class checks now for duplicate positions upon initialization (`PR #107 <https://github.com/aim2dat/aim2dat/pull/107>`_).
 * ``strct.ext_analysis.determine_molecular_fragments`` offers additional parameters, allowing to exclude sites and restricting the size of the fragments (`PR #111 <https://github.com/aim2dat/aim2dat/pull/111>`_).
 * Slight speed-up in distance based methods to calculate the coordination environment by sorting the pair-wise distances first.
 * Added ``utils.element_properties.get_val_electrons`` function to return the number of valence electrons of the element (`PR #113 <https://github.com/aim2dat/aim2dat/pull/113>`_).
 * Support CP2K versions 2025.1 (`PR #114 <https://github.com/aim2dat/aim2dat/pull/114>`_).
 * Implemented BSSE parsing to ``io.cp2k.read_stdout`` function (`PR #115 <https://github.com/aim2dat/aim2dat/pull/115>`_ and `PR #116 <https://github.com/aim2dat/aim2dat/pull/116>`_).
+* Added more units and fundamental constants to ``utils.units`` (`PR #122 <https://github.com/aim2dat/aim2dat/pull/122>`_).
+* The ``strct.Structure.calculate_angle`` and ``strct.Structure.calculate_dihedral_angle`` now supports lists and ``None`` as input (`PR #126 <https://github.com/aim2dat/aim2dat/pull/126>`_).
+* Several new functions have been added to the ``strct.ext_manipulation`` module, including ``add_structure_position``, ``translate_structure`` or ``rotate_structure``, each of the functions in this module now implement a common ``dist_threshold`` parameter to control the inter-atomic distances of the altered structures (`PR #105 <https://github.com/aim2dat/aim2dat/pull/105>`_, `PR #123 <https://github.com/aim2dat/aim2dat/pull/123>`_, `PR #129 <https://github.com/aim2dat/aim2dat/pull/129>`_).
+* The ``strct.Structure`` class has now the property ``numbers`` to get the atomic number related to the element (`PR #130 <https://github.com/aim2dat/aim2dat/pull/130>`_).
 
 **Fixes:**
 
@@ -27,11 +29,22 @@ Version 0.3.0
 * Some str values were sometimes wrongly transformed into float numbers in the output parsers and cif parser checks more rigorously whether two atoms are occupying the same site (`PR #104 <https://github.com/aim2dat/aim2dat/pull/104>`_).
 * Fix positions returned from ``strct.Structure.calculate_distance`` function (`PR #106 <https://github.com/aim2dat/aim2dat/pull/106>`_).
 * ``io.cif.read_file`` was not properly parsing string values in loops with delimiters ("" or '') and without spaces (`PR #118 <https://github.com/aim2dat/aim2dat/pull/118>`_).
+* Setting ``strct.Structure.site_attributes`` was not resetting the dictionary but instead adding the new key/value pairs (`PR #125 <https://github.com/aim2dat/aim2dat/pull/125>`_).
+* The ``strct.StructureOperations.compare_sites_via_coordination``, ``strct.StructureOperations.find_eq_sites_via_coordination``, ``strct.ext_analysis.decorator.external_analysis_method`` decorator now properly handles unset keyword arguments (`PR #128 <https://github.com/aim2dat/aim2dat/pull/128>`_).
+
+**Deprecations:**
+
+* The ``strct.Structure.import_methods``, ``strct.Structure.export_methods``, ``strct.Structure.analysis_methods``, ``strct.Structure.manipulation_methods``, ``strct.StructureOperations.analysis_methods`` and ``strct.StructureOperaions.manipulation_methods`` functions are now deprecated since Python dropped the support for class properties. The methods are replaced by the ``list_*_methods`` class methods, making this Package compatible with Python 3.13 (`PR #132 <https://github.com/aim2dat/aim2dat/pull/132>`_).
 
 **Breaking Changes:**
 
 * ``strct.ext_analysis.determine_molecular_fragments`` now considers the same site multiple times if it is connected, returns a list of ``strct.Structure`` objects and does not shift the position of the first atom to zero (`PR #111 <https://github.com/aim2dat/aim2dat/pull/111>`_).
 * ``strct.ext_analysis.create_graph`` now only outputs the graphviz graph if the ``get_graphviz_graph`` parameter is set to ``True`` and networkx is added to the core dependencies (`PR #112 <https://github.com/aim2dat/aim2dat/pull/112>`_).
+* All units and constants now rely on an internal implementation which is based on CODATA 2022 instead of 2014 (`PR #122 <https://github.com/aim2dat/aim2dat/pull/122>`_).
+* The ``strct.Structure.calculate_distance``, ``strct.Structure.calculate_angle`` and ``strct.Structure.calculate_dihedral_angle`` now return all possible combinations from the given indices instead of pairwise tuples (`PR #126 <https://github.com/aim2dat/aim2dat/pull/126>`_).
+* The ``strct.ext_analysis.determine_molecular_fragments``, ``strct.ext_analysis.create_graph`` and ``strct.ext_manipulation.add_structure_coord`` functions now implement ``**cn_kwargs`` as container for the arguments forwarded to the ``strct.Structure.calculate_coordination`` function (`PR #128 <https://github.com/aim2dat/aim2dat/pull/128>`_).
+* The default value for the ``method`` parameter of the ``strct.Structure.calculate_coordination`` is now set to ``atomic_radius`` as this method seems more reliable and equally fast as ``minimum_distance`` (`PR #128 <https://github.com/aim2dat/aim2dat/pull/128>`_).
+* The ``aim2dat.strct.ext_manipulation.add_structure_random`` function now uses the numpy random number generator and now offers more keyword arguments to control the used random numbers (`PR #134 <https://github.com/aim2dat/aim2dat/pull/134>`_).
 
 
 Version 0.2.0
@@ -77,7 +90,7 @@ Version 0.2.0
 * ``strct.StructureOperations.compare_*`` functions can now be run in parallel (`PR #78 <https://github.com/aim2dat/aim2dat/pull/78>`_).
 * Added ``custom_hatch`` to all ``plots`` classes to allow plotting hatched bars using the matplotlib backend (`PR #89 <https://github.com/aim2dat/aim2dat/pull/89>`_).
 
-**Depreciations:**
+**Deprecations:**
 
 * ``strct.ext_manipulation.add_functional_group`` is replaced by ``strct.ext_manipulation.add_structure_coord`` (`PR #37 <https://github.com/aim2dat/aim2dat/pull/37>`_).
 * ``aim2dat.io.cp2k.read_optimized_structure`` is replaced by ``aim2dat.io.cp2k.read_restart_structure`` (`PR #56 <https://github.com/aim2dat/aim2dat/pull/56>`_).

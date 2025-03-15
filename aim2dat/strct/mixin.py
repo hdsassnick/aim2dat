@@ -31,6 +31,25 @@ if TYPE_CHECKING:
     from aim2dat.strct import StructureCollection
 
 
+class classproperty:
+    """Custom, temporary decorator to depreciate class properties."""
+
+    def __init__(self, func):
+        """Initiate class."""
+        self.fget = func
+
+    def __get__(self, instance, owner):
+        """Get method."""
+        from warnings import warn
+
+        warn(
+            "This function will be removed soon, please use the `list_*_methods` instead.",
+            DeprecationWarning,
+            2,
+        )
+        return self.fget(owner)
+
+
 def analysis_method(func):
     """Mark function as calculation function."""
 
@@ -55,14 +74,27 @@ class AnalysisMixin:
     """Mixin class to perform structural analysis tasks."""
 
     @classmethod
-    @property
-    def analysis_methods(cls) -> list:
-        """list: Return calculation methods."""
+    def list_analysis_methods(cls) -> list:
+        """
+        Get a list with the function names of all available analysis methods.
+
+        Returns
+        -------
+        list:
+            Return a list of all available analysis methods.
+        """
         analysis_methods = []
         for name, method in AnalysisMixin.__dict__.items():
             if getattr(method, "_is_analysis_method", False):
                 analysis_methods.append(name)
         return analysis_methods
+
+    @classproperty
+    def analysis_methods(cls) -> list:
+        """
+        list: Return calculation methods. This property is depreciated and will be removed soon.
+        """
+        return cls.list_analysis_methods()
 
     @analysis_method
     def determine_point_group(
@@ -158,9 +190,9 @@ class AnalysisMixin:
 
         Parameters
         ----------
-        site_index1 : int
+        site_index1 : int, list or None
             Index of the site.
-        site_index2 : int
+        site_index2 : int, list or None
             Index of the site.
         backfold_positions : bool
             Whether to backfold the atomic sites and return the smallest distance.
@@ -175,12 +207,12 @@ class AnalysisMixin:
 
         Returns
         -------
-        float or None
+        float, dict or None
             Distance between the two atoms or a list of distances (if ``use_super_cell`` is
-            set to ``True``). If multiple indices are provided, a dictionary with the index pairs
-            as keys is returned. If ``return_pos`` is set to ``True``, the positions are
-            returned as well. In case ``use_super_cell`` is set to ``True`` and the distance
-            between the two sites exceeds ``r_max``, ``None`` is returned.
+            set to ``True``). If one of the indices is a list, a dictionary with all index pairs
+            as keys and distances as values is returned. If ``return_pos`` is set to ``True``, the
+            positions are returned as well. In case ``use_super_cell`` is set to ``True`` and the
+            distance between the two sites exceeds ``r_max``, ``None`` is returned.
         """
         kwargs = {
             "site_index1": site_index1,
@@ -195,9 +227,9 @@ class AnalysisMixin:
     @analysis_method
     def calculate_angle(
         self,
-        site_index1: int = 0,
-        site_index2: int = 1,
-        site_index3: int = 2,
+        site_index1: Union[int, List[int]] = 0,
+        site_index2: Union[int, List[int]] = 1,
+        site_index3: Union[int, List[int]] = 2,
         backfold_positions: bool = True,
     ) -> float:
         """
@@ -205,19 +237,21 @@ class AnalysisMixin:
 
         Parameters
         ----------
-        site_index1 : int
+        site_index1 : int, list or None
             Index of the site.
-        site_index2 : int
+        site_index2 : int, list or None
             Index of the site.
-        site_index3 : int
+        site_index3 : int, list or None
             Index of the site.
         backfold_positions : bool
             Whether to backfold the atomic sites and return the smallest distance.
 
         Returns
         -------
-        float
-            Angle calculated via the vectors from atom 2 to atom 1 and atom 3.
+        float or dict
+            Angle calculated via the vectors from atom 2 to atom 1 and atom 3. If one of the
+            indices is a list, a dictionary with all index pairs as keys and angles as values is
+            returned.
         """
         kwargs = {
             "site_index1": site_index1,
@@ -230,10 +264,10 @@ class AnalysisMixin:
     @analysis_method
     def calculate_dihedral_angle(
         self,
-        site_index1: int = 0,
-        site_index2: int = 1,
-        site_index3: int = 2,
-        site_index4: int = 3,
+        site_index1: Union[int, List[int]] = 0,
+        site_index2: Union[int, List[int]] = 1,
+        site_index3: Union[int, List[int]] = 2,
+        site_index4: Union[int, List[int]] = 3,
         backfold_positions: bool = True,
     ) -> float:
         """
@@ -241,21 +275,22 @@ class AnalysisMixin:
 
         Parameters
         ----------
-        site_index1 : int
+        site_index1 : int, list or None
             Index of the site.
-        site_index2 : int
+        site_index2 : int, list or None
             Index of the site.
-        site_index3 : int
+        site_index3 : int, list or None
             Index of the site.
-        site_index4 : int
+        site_index4 : int, list or None
             Index of the site.
         backfold_positions : bool
             Whether to backfold the atomic sites and return the smallest distance.
 
         Returns
         --------
-        float
-            Dihedral angle.
+        float or dict
+            Dihedral angle. If one of the indices is a list, a dictionary with all
+            index pairs as keys and angles as values is returned.
         """
         kwargs = {
             "site_index1": site_index1,
@@ -290,7 +325,7 @@ class AnalysisMixin:
     def calculate_coordination(
         self,
         r_max: float = 10.0,
-        method: str = "minimum_distance",
+        method: str = "atomic_radius",
         min_dist_delta: float = 0.1,
         n_nearest_neighbours: int = 5,
         radius_type: str = "chen_manz",
@@ -309,8 +344,7 @@ class AnalysisMixin:
         r_max : float (optional)
             Cut-off value for the maximum distance between two atoms in angstrom.
         method : str (optional)
-            Method used to calculate the coordination environment. The default value is
-            ``'minimum_distance'``.
+            Method used to calculate the coordination environment.
         min_dist_delta : float (optional)
             Tolerance parameter that defines the relative distance from the nearest neighbour atom
             for the ``'minimum_distance'`` method.
@@ -416,14 +450,27 @@ class ManipulationMixin:
     """Mixin class to perform structural manipulation tasks."""
 
     @classmethod
-    @property
-    def manipulation_methods(cls) -> list:
-        """list: Return manipulation methods."""
+    def list_manipulation_methods(cls) -> list:
+        """
+        Get a list with the function names of all available manipulation methods.
+
+        Returns
+        -------
+        list:
+            Return a list of all available manipulation methods.
+        """
         manipulation_methods = []
         for name, method in ManipulationMixin.__dict__.items():
             if getattr(method, "_manipulates_structure", False):
                 manipulation_methods.append(name)
         return manipulation_methods
+
+    @classproperty
+    def manipulation_methods(cls) -> list:
+        """
+        list: Return manipulation methods. This property is depreciated and will be removed soon.
+        """
+        return cls.list_manipulation_methods()
 
     @manipulates_structure
     def delete_atoms(
