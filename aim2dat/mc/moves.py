@@ -5,15 +5,15 @@ import numpy as np
 
 
 from aim2dat.ext_interfaces import _return_ext_interface_modules
-from aim2dat.strct.ext_manipulation import add_structure_position, translate_structure, rotate_structure
+from aim2dat.strct.ext_manipulation import add_structure_random, translate_structure, rotate_structure, DistanceThresholdError
 from aim2dat.utils.units import energy, constants
 
 class BaseMove(abc.ABC):
     n_rand_nrs = 3
 
-    def __init__(self, structure, component, component_key, component_indices, dist_threshold, ase_calculator):
+    def __init__(self, structure, components, component_key, component_indices, dist_threshold, ase_calculator):
         self.structure = structure
-        self.component = component
+        self.components = components
         self.component_key = component_key
         self.component_indices = component_indices
         self.dist_threshold = dist_threshold
@@ -51,25 +51,22 @@ class BaseMove(abc.ABC):
         else:
             raise ValueError("No viable backend found to evaluate the energy.")
 
-    def _insert_component(self, structure, rand_nrs, component_key=None):
-        if component_key is None:
-            ind_numbers = [int(v.split("_")[-1]) for v in self.component_indices]
-            max_idx = max(ind_numbers) if len(ind_numbers) > 0 else 0
-            component_key = f"{self.component.label}_{max_idx + 1}"
-
-        # TODO use add_structure_random and adjust interface to do so.
-        # TODO rotation vector is not complete?
-        self.component = rotate_structure(self.component, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4], change_label=False)
-        self.component.kinds = [component_key] * len(self.component)
-        pos = (np.array(structure.cell).T).dot(np.array(rand_nrs[4:7]))
+    def _insert_component(self, structure, rand_nrs):
+        new_comp_idx = int(rand_nrs[0] * len(self.components[self.component_key[0]]))
+        new_key = (self.component_key[0], new_comp_idx, self.component_key[2])
+        new_comp = self.components[self.component_key[0]][new_comp_idx].copy()
+        new_comp.kinds = ["_".join(str(v) for v in new_key)] * len(new_comp)
         try:
-            new_structure = add_structure_position(
-                structure, guest_structure=self.component, position=pos, dist_threshold=self.dist_threshold, change_label=False
+            new_structure = add_structure_random(
+                structure, guest_structure=new_comp, random_nrs=rand_nrs[1:], max_tries=1, dist_threshold=self.dist_threshold, change_label=False
             )
-        except ValueError: # TODO be more specific on error message.
+        except DistanceThresholdError:
             return None
 
-        self.component_indices[component_key] = list(range(len(structure), len(structure) + len(self.component)))
+        #print(self.component_indices)
+        #del self.component_indices[self.component_key]
+        self.new_component_key = new_key
+        self.component_indices[new_key] = list(range(len(structure), len(structure) + len(new_comp)))
         return new_structure
 
     def _remove_component(self, structure):
@@ -90,7 +87,7 @@ class RotateComponent(BaseMove):
                 self.structure, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4],
                 site_indices=self.component_indices[self.component_key], dist_threshold=self.dist_threshold, change_label=False
             )
-        except ValueError: # TODO be more specific on error message.
+        except DistanceThresholdError:
             pass
 
 
@@ -105,7 +102,7 @@ class TranslateComponent(BaseMove):
                 self.structure, site_indices=self.component_indices[self.component_key], vector=v,
                 dist_threshold=self.dist_threshold, change_label=False
             )
-        except ValueError: #TODO be more specific on error message or add new error for AtomsTooClose.
+        except DistanceThresholdError:
             pass
 
 
@@ -117,17 +114,17 @@ class RemoveComponent(BaseMove):
 
 
 class InsertComponent(BaseMove):
-    n_rand_nrs = 7
+    n_rand_nrs = 8
 
     def perform_move(self, rand_nrs):
         self.new_structure = self._insert_component(self.structure, rand_nrs)
 
 
 class ReinsertComponent(BaseMove):
-    n_rand_nrs = 7
+    n_rand_nrs = 8
 
     def perform_move(self, rand_nrs):
-        self.new_structure = self._insert_component(self._remove_component(self.structure), rand_nrs, self.component_key)
+        self.new_structure = self._insert_component(self._remove_component(self.structure), rand_nrs)
 
 
 

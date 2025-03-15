@@ -31,13 +31,6 @@ cwd = os.path.dirname(__file__)
 @external_manipulation_method
 def add_structure_random(
     structure: Structure,
-<<<<<<< HEAD
-    change_label: bool = False,
-    wrap: bool = False,
-    guest_structure: Union[Structure, str] = "CH3",
-    dist_threshold: Union[dict, list, float, int, str, None] = 0.8,
-    random_state: Union[float, None] = None,
-=======
     guest_structure: Union[Structure, str] = "CH3",
     max_tries: int = 1000,
     random_seed: Union[float, None] = None,
@@ -45,7 +38,6 @@ def add_structure_random(
     dist_threshold: Union[dict, list, float, int, str, None] = 0.8,
     wrap: bool = False,
     change_label: bool = False,
->>>>>>> main
 ) -> Structure:
     """
     Add structure at random position and orientation.
@@ -58,22 +50,10 @@ def add_structure_random(
         A representation of the guest structure given as a string of a functional group or molecule
         (viable options are ``'CH3'``, ``'COOH'``, ``'H2O'``, ``'NH2'``, ``'NO2'`` or ``'OH'``), a
         ``Structure`` object or the element symbol to add one single atom.
-<<<<<<< HEAD
-    dist_threshold : dict, list, float, int, str or None (optional)
-        Check the distances between all site pairs of the host and guest structure to ensure that
-        none of the added atoms collide or are too far apart. For example, ``0.8`` to ensure a
-        minimum distance of ``0.8`` for all site pairs. A list ``[0.8, 1.5]`` adds a check for
-        the maximum distance as well. Giving a dictionary ``{("C", "H"): 0.8, (0, 4): 0.8}``
-        allows distance checks for individual pairs of elements or site indices. Specifying an
-        atomic radius type as str, e.g. ``covalent+10`` sets the minimum threshold to the sum
-        of covalent radii plus 10%.
-    random_state : float or None (optional)
-=======
     max_tries : int
         Number of tries to add the guest structure. A trie is rejected via the criteria given by
         the ``dist_treshold`` parameter.
     random_seed : int or None (optional)
->>>>>>> main
         Specify the initial random state to ensure reproducible results.
     random_nrs : list or None (optional)
         List of random numbers used to derive the position and rotation of the guest molecule. It
@@ -139,14 +119,10 @@ def add_structure_random(
         guest_strct1 = guest_strct.copy()
         guest_strct1.set_positions(guest_positions)
 
-<<<<<<< HEAD
-        new_structure = _merge_structures(structure, guest_strct1, wrap)
-=======
         try:
             new_structure = _merge_structures(structure, guest_strct1, wrap)
         except SamePositionsError:
             continue
->>>>>>> main
         new_indices = list(
             range(len(new_structure) - len(guest_strct["elements"]), len(new_structure))
         )
