@@ -190,6 +190,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
     def run(self):
         e_structure = self._get_energy(self.structure)
         for i in range(self.n_steps):
+            comp_key = ""
             e_new, e_comp = self._move_wrapper(InsertComponent, (list(self.components.keys())[0], None, self.n_components[0])) # TODO Generalize to multi-component case...
             self.insert_energies.append(e_new - e_structure - e_comp)
             if self.n_components[0] > 0:
