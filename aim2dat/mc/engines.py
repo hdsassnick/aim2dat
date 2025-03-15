@@ -79,7 +79,8 @@ class _BaseMonteCarlo:
                     continue
                 # TODO check structure label as well.
                 if comp_label in kind:
-                    self._component_indices.setdefault(kind, []).append(idx)
+                    comp_key = tuple(int(v) if i > 0 else v for i, v in enumerate(kind.split("_")))
+                    self._component_indices.setdefault(comp_key, []).append(idx)
 
         # Add/remove components.
         if n_comp - len(self._component_indices) > 0:
