@@ -33,7 +33,10 @@ class BaseMove(abc.ABC):
             return False
 
         e_diff = e - self.structure.get_attribute("ref_energy")
-        return rand_nr < min(1.0, np.exp(-1.0 * e_diff / (temperature * constants.kb * energy.j)))
+        if e_diff < 0:
+            return True
+        else:
+            return rand_nr < min(1.0, np.exp(-1.0 * e_diff / (temperature * constants.kb * energy.j)))
 
     def get_energy(self):
         if self.new_structure is None:
@@ -55,6 +58,7 @@ class BaseMove(abc.ABC):
             component_key = f"{self.component.label}_{max_idx + 1}"
 
         # TODO use add_structure_random and adjust interface to do so.
+        # TODO rotation vector is not complete?
         self.component = rotate_structure(self.component, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4], change_label=False)
         self.component.kinds = [component_key] * len(self.component)
         pos = (np.array(structure.cell).T).dot(np.array(rand_nrs[4:7]))

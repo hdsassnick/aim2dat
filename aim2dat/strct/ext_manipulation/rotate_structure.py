@@ -4,18 +4,17 @@ Module that implements routines to add a functional group or adsorbed molecule t
 
 # Standard library imports
 from typing import Union, List
-import copy
 
 # Third party library imports
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 # Internal library imports
+from aim2dat.strct import Structure
 from aim2dat.strct.ext_manipulation.decorator import (
     external_manipulation_method,
 )
 from aim2dat.strct.ext_manipulation.utils import _check_distances
-from aim2dat.strct import Structure
 
 
 @external_manipulation_method
@@ -24,9 +23,9 @@ def rotate_structure(
     angles: Union[float, List[float]],
     vector: Union[None, List[float]] = None,
     origin: Union[None, List[float]] = None,
-    site_indices: Union[None, List[int]] = None,
+    site_indices: Union[slice, List[int]] = slice(None),
     wrap: bool = False,
-    dist_threshold: float = None,
+    dist_threshold: Union[dict, list, float, int, str, None] = None,
     change_label: bool = False,
 ):
     """
@@ -51,8 +50,14 @@ def rotate_structure(
         Indices of the sites to rotate. If not given, all sites of the structure are rotated.
     wrap : bool (optional)
         Wrap atomic positions back into the unit cell.
-    dist_threshold : float or None (optional)
-        Check the distances between all site pairs to ensure that none of the atoms collide.
+    dist_threshold : dict, list, float, int, str or None (optional)
+        Check the distances between all site pairs to ensure that none of the changed atoms
+        collide or are too far apart. For example, ``0.8`` to ensure a minimum distance of
+        ``0.8`` for all site pairs. A list ``[0.8, 1.5]`` adds a check for the maximum distance
+        as well. Giving a dictionary ``{("C", "H"): 0.8, (0, 4): 0.8}`` allows distance checks
+        for individual pairs of elements or site indices. Specifying an atomic radius type as
+        str, e.g. ``covalent+10`` sets the minimum threshold to the sum of covalent radii plus
+        10%.
     change_label : bool (optional)
         Add suffix to the label of the new structure highlighting the performed manipulation.
 
@@ -60,6 +65,19 @@ def rotate_structure(
     -------
     aim2dat.strct.Structure
         Rotated structure.
+
+    Raises
+    ------
+    ValueError
+        `dist_threshold` needs to have keys with length 2 containing site indices or element
+        symbols.
+    ValueError
+        `dist_threshold` needs to have keys of type List[str/int] containing site indices or
+        element symbols.
+    TypeError
+        `dist_threshold` needs to be of type int/float/list/tuple/dict or None.
+    ValueError
+        If any distance between atoms is outside the threshold.
     """
     if isinstance(angles, (list, tuple, np.ndarray)):
         rotation = Rotation.from_euler("xyz", angles, degrees=True)
@@ -69,22 +87,15 @@ def rotate_structure(
     else:
         raise TypeError("angles must be type list or type float.")
 
-    if site_indices is None:
-        site_indices = list(range(len(structure)))
-
-    positions = np.array([structure["positions"][idx] for idx in site_indices])
+    positions = np.array(structure.positions)
     if origin is None:
-        origin = np.mean(positions, axis=0)
+        origin = np.mean(positions[site_indices], axis=0)
     origin = np.array(origin)
-    positions -= origin
-    rotated_points = rotation.apply(positions)
-    rotated_points += origin
-
+    positions[site_indices] -= origin
+    positions[site_indices] = rotation.apply(positions[site_indices])
+    positions[site_indices] += origin
     new_structure = structure.to_dict()
-    all_positions = list(new_structure["positions"])
-    for idx, pos in zip(site_indices, rotated_points):
-        all_positions[idx] = pos
-    new_structure["positions"] = all_positions
+    new_structure["positions"] = positions
     new_structure = Structure(**new_structure, wrap=wrap)
-    _check_distances(new_structure, site_indices, dist_threshold, False)
+    _check_distances(new_structure, site_indices, dist_threshold, None, False)
     return new_structure, "_rotated-" + f"{angles}"

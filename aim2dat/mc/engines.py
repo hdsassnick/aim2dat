@@ -10,6 +10,7 @@ from aim2dat.strct.ext_manipulation import add_structure_random
 
 
 # TODO implement general logging function.
+# TODO implement restart file (binary?)
 class _BaseMonteCarlo:
 
     def __init__(self, structure, components, n_components, dist_threshold, n_steps, n_print, ase_calculator, random_seed):
@@ -78,6 +79,7 @@ class _BaseMonteCarlo:
 
     def _print_stdout(self, step, energy):
         if (step + 1) % int(self.n_steps / self.n_print) == 0:
+            # TODO rouding of numbers...
             print(f"Step: {step + 1}, energy: {energy}", flush=True)
 
 

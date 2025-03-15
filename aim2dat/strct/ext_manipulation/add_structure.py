@@ -5,7 +5,6 @@ Module that implements routines to add a functional group or adsorbed molecule t
 # Standard library imports
 import os
 from typing import Union, List
-import itertools
 import random
 import copy
 
@@ -13,11 +12,9 @@ import copy
 import numpy as np
 
 # Internal library imports
-from aim2dat.strct.ext_manipulation.decorator import (
-    external_manipulation_method,
-)
-from aim2dat.strct.ext_manipulation.utils import _check_distances
-from aim2dat.strct.strct import Structure
+from aim2dat.strct import Structure
+from aim2dat.strct.ext_manipulation.decorator import external_manipulation_method
+from aim2dat.strct.ext_manipulation.utils import _build_distance_dict, _check_distances
 from aim2dat.strct.ext_manipulation.rotate_structure import rotate_structure
 from aim2dat.strct.strct_misc import _calc_atomic_distance
 from aim2dat.utils.element_properties import get_element_symbol
@@ -31,11 +28,11 @@ cwd = os.path.dirname(__file__)
 @external_manipulation_method
 def add_structure_random(
     structure: Structure,
+    change_label: bool = False,
     wrap: bool = False,
     guest_structure: Union[Structure, str] = "CH3",
-    dist_threshold: Union[float, None] = 0.8,
+    dist_threshold: Union[dict, list, float, int, str, None] = 0.8,
     random_state: Union[float, None] = None,
-    change_label: bool = False,
 ) -> Structure:
     """
     Add structure at random position and orientation.
@@ -50,9 +47,14 @@ def add_structure_random(
         A representation of the guest structure given as a string of a functional group or molecule
         (viable options are ``'CH3'``, ``'COOH'``, ``'H2O'``, ``'NH2'``, ``'NO2'`` or ``'OH'``), a
         ``Structure`` object or the element symbol to add one single atom.
-    dist_threshold : float or None (optional)
+    dist_threshold : dict, list, float, int, str or None (optional)
         Check the distances between all site pairs of the host and guest structure to ensure that
-        none of the added atoms collide.
+        none of the added atoms collide or are too far apart. For example, ``0.8`` to ensure a
+        minimum distance of ``0.8`` for all site pairs. A list ``[0.8, 1.5]`` adds a check for
+        the maximum distance as well. Giving a dictionary ``{("C", "H"): 0.8, (0, 4): 0.8}``
+        allows distance checks for individual pairs of elements or site indices. Specifying an
+        atomic radius type as str, e.g. ``covalent+10`` sets the minimum threshold to the sum
+        of covalent radii plus 10%.
     random_state : float or None (optional)
         Specify the initial random state to ensure reproducible results.
     change_label : bool (optional)
@@ -61,19 +63,27 @@ def add_structure_random(
     Raises
     ------
     ValueError
+        `dist_threshold` needs to have keys with length 2 containing site indices or element
+        symbols.
+    ValueError
+        `dist_threshold` needs to have keys of type List[str/int] containing site indices or
+        element symbols.
+    TypeError
+        `dist_threshold` needs to be of type int/float/list/tuple/dict or None.
+    ValueError
         Could not add guest structure, host structure seems to be too aggregated.
     """
     guest_strct, guest_strct_label = _check_guest_structure(guest_structure)
+    distance_dict, min_dist = _build_distance_dict(dist_threshold, structure, guest_strct)
 
     # In case no cell is given we would like to have the structure reasonably close:
     if structure.cell is None:
-        threshold = 1.5 if dist_threshold is None else dist_threshold + 1.5
         positions = np.array(structure.positions)
-        min_pos = np.amin(positions, axis=0) - threshold
-        max_pos = np.amax(positions, axis=0)
+        min_pos = np.amin(positions, axis=0) - min_dist - 1.5
+        max_pos = np.amax(positions, axis=0) + min_dist + 1.5
         cell = np.zeros((3, 3))
         for d in range(3):
-            cell[d][d] = max_pos[d] + threshold
+            cell[d][d] = max_pos[d]
     else:
         min_pos = np.zeros(3)
         cell = np.array(structure.cell)
@@ -94,10 +104,11 @@ def add_structure_random(
         guest_strct1.set_positions(guest_positions)
 
         new_structure = _merge_structures(structure, guest_strct1, wrap)
-        new_indices = list(range(len(new_structure) - len(guest_strct["elements"]), len(new_structure)))
-        is_added = _check_distances(
-            new_structure, new_indices, dist_threshold, True
+        new_indices = list(
+            range(len(new_structure) - len(guest_strct["elements"]), len(new_structure))
         )
+
+        is_added = _check_distances(new_structure, new_indices, None, distance_dict, True)
         if is_added:
             return new_structure, "_added-" + guest_strct_label
     raise ValueError("Could not add guest structure, host structure seems to be too aggregated.")
@@ -112,20 +123,10 @@ def add_structure_coord(
     guest_structure: Union[Structure, str] = "CH3",
     guest_dir: Union[None, List[float]] = None,
     bond_length: float = 1.25,
-    r_max: float = 15.0,
-    cn_method: str = "minimum_distance",
-    min_dist_delta: float = 0.1,
-    n_nearest_neighbours: int = 5,
-    radius_type: str = "chen_manz",
-    atomic_radius_delta: float = 0.0,
-    econ_tolerance: float = 0.5,
-    econ_conv_threshold: float = 0.001,
-    voronoi_weight_type: float = "rel_solid_angle",
-    voronoi_weight_threshold: float = 0.5,
-    okeeffe_weight_threshold: float = 0.5,
-    dist_constraints=[],
-    dist_threshold: Union[float, None] = 0.8,
+    dist_constraints=None,
+    dist_threshold: Union[dict, list, float, int, str, None] = 0.8,
     change_label: bool = False,
+    **cn_kwargs,
 ) -> Structure:
     """
     Add a functional group or an atom to a host site.
@@ -150,41 +151,41 @@ def add_structure_coord(
         neighbors is constructed based on the guest index.
     bond_length : float
         Bond length between the host atom and the base atom of the functional group.
-    r_max : float (optional)
-        Cut-off value for the maximum distance between two atoms in angstrom.
-    cn_method : str (optional)
-        Method used to calculate the coordination environment.
-    min_dist_delta : float (optional)
-        Tolerance parameter that defines the relative distance from the nearest neighbour atom
-        for the ``'minimum_distance'`` method.
-    n_nearest_neighbours : int (optional)
-        Number of neighbours that are considered coordinated for the ``'n_neighbours'``
-        method.
-    econ_tolerance : float (optional)
-        Tolerance parameter for the econ method.
-    econ_conv_threshold : float (optional)
-        Convergence threshold for the econ method.
-    voronoi_weight_type : str (optional)
-        Weight type of the Voronoi facets. Supported options are ``'covalent_atomic_radius'``,
-        ``'area'`` and ``'solid_angle'``. The prefix ``'rel_'`` specifies that the relative
-        weights with respect to the maximum value of the polyhedron are calculated.
-    voronoi_weight_threshold : float (optional)
-        Weight threshold to consider a neighbouring atom coordinated.
     dist_constraints : list (optional)
         List of three-fold tuples containing the index of the site of the host structure, the index
         of the site of the guest structure and the target distance. The position of the guest
         structure is varied based on a grid search until the sum of the absolute errors in
         minimized.
-    dist_threshold : float or None (optional)
+    dist_threshold : dict, list, float, int, str or None (optional)
         Check the distances between all site pairs of the host and guest structure to ensure that
-        none of the added atoms collide.
+        none of the added atoms collide or are too far apart. For example, ``0.8`` to ensure a
+        minimum distance of ``0.8`` for all site pairs. A list ``[0.8, 1.5]`` adds a check for
+        the maximum distance as well. Giving a dictionary ``{("C", "H"): 0.8, (0, 4): 0.8}``
+        allows distance checks for individual pairs of elements or site indices. Specifying an
+        atomic radius type as str, e.g. ``covalent+10`` sets the minimum threshold to the sum
+        of covalent radii plus 10%.
     change_label : bool (optional)
         Add suffix to the label of the new structure highlighting the performed manipulation.
+    cn_kwargs :
+        Optional keyword arguments passed on to the ``calculate_coordination`` function.
 
     Returns
     -------
     aim2dat.strct.Structure
         Structure with attached functional group.
+
+    Raises
+    ------
+    ValueError
+        `dist_threshold` needs to have keys with length 2 containing site indices or element
+        symbols.
+    ValueError
+        `dist_threshold` needs to have keys of type List[str/int] containing site indices or
+        element symbols.
+    TypeError
+        `dist_threshold` needs to be of type int/float/list/tuple/dict or None.
+    ValueError
+        If any distance between atoms is outside the threshold.
     """
     guest_strct, guest_strct_label = _check_guest_structure(guest_structure)
     if isinstance(host_indices, int):
@@ -194,40 +195,19 @@ def add_structure_coord(
         idx = max(host_indices)
         return structure
 
+    if dist_constraints is None:
+        dist_constraints = []
+
     if guest_dir is None:
         guest_dir = [1.0, 0.0, 0.0]
         if len(guest_strct) > 1:
             # Get vector of guest atoms for rotation
-            guest_strct_coord = guest_strct.calculate_coordination(
-                r_max=r_max,
-                method=cn_method,
-                min_dist_delta=min_dist_delta,
-                n_nearest_neighbours=n_nearest_neighbours,
-                radius_type=radius_type,
-                atomic_radius_delta=atomic_radius_delta,
-                econ_tolerance=econ_tolerance,
-                econ_conv_threshold=econ_conv_threshold,
-                voronoi_weight_type=voronoi_weight_type,
-                voronoi_weight_threshold=voronoi_weight_threshold,
-                okeeffe_weight_threshold=okeeffe_weight_threshold,
-            )
+            guest_strct_coord = guest_strct.calculate_coordination(**cn_kwargs)
             guest_dir = -1.0 * _derive_bond_dir(guest_index, guest_strct_coord)
     guest_dir /= np.linalg.norm(np.array(guest_dir))
 
     # Calculate coordination:
-    coord = structure.calculate_coordination(
-        r_max=r_max,
-        method=cn_method,
-        min_dist_delta=min_dist_delta,
-        n_nearest_neighbours=n_nearest_neighbours,
-        radius_type=radius_type,
-        atomic_radius_delta=atomic_radius_delta,
-        econ_tolerance=econ_tolerance,
-        econ_conv_threshold=econ_conv_threshold,
-        voronoi_weight_type=voronoi_weight_type,
-        voronoi_weight_threshold=voronoi_weight_threshold,
-        okeeffe_weight_threshold=okeeffe_weight_threshold,
-    )
+    coord = structure.calculate_coordination(**cn_kwargs)
 
     # Derive bond directions and rotation to align guest towards bond direction:
     bond_dir = _derive_bond_dir(host_indices[0], coord)
@@ -278,9 +258,12 @@ def add_structure_coord(
         ref_dirs,
         dist_constraints,
     )
-    new_indices = list(range(len(new_structure) - len(guest_strct["elements"]), len(new_structure)))
+    new_indices = list(
+        range(len(new_structure) - len(guest_strct["elements"]), len(new_structure))
+    )
 
     # Optimize positions to reduce score
+    dist_dict, _ = _build_distance_dict(dist_threshold, structure, guest_strct)
     if len(dist_constraints) > 0:
         for alpha in np.linspace(0.0, 2.0 * np.pi, num=10):
             for beta in np.linspace(-1.0 * np.pi, 1.0 * np.pi, num=10):
@@ -296,12 +279,12 @@ def add_structure_coord(
                         dist_constraints,
                     )
                     if score0 < score and _check_distances(
-                        new_strct0, new_indices, dist_threshold, True
+                        new_strct0, new_indices, None, dist_dict, True
                     ):
                         score = score0
                         new_structure = new_strct0
     else:
-        _check_distances(new_structure, new_indices, dist_threshold, False)
+        _check_distances(new_structure, new_indices, None, dist_dict, False)
     return new_structure, "_added-" + guest_strct_label
 
 
@@ -311,7 +294,7 @@ def add_structure_position(
     position: List[float],
     guest_structure: Union[Structure, str] = "CH3",
     wrap: bool = False,
-    dist_threshold: float = None,
+    dist_threshold: Union[dict, list, float, int, str, None] = None,
     change_label: bool = False,
 ) -> Structure:
     """
@@ -330,9 +313,14 @@ def add_structure_position(
         or the element symbol to add one single atom.
     wrap : bool (optional)
         Wrap atomic positions back into the unit cell.
-    dist_threshold : float or None (optional)
+    dist_threshold : dict, list, float, int, str or None (optional)
         Check the distances between all site pairs of the host and guest structure to ensure that
-        none of the added atoms collide.
+        none of the added atoms collide or are too far apart. For example, ``0.8`` to ensure a
+        minimum distance of ``0.8`` for all site pairs. A list ``[0.8, 1.5]`` adds a check for
+        the maximum distance as well. Giving a dictionary ``{("C", "H"): 0.8, (0, 4): 0.8}``
+        allows distance checks for individual pairs of elements or site indices. Specifying an
+        atomic radius type as str, e.g. ``covalent+10`` sets the minimum threshold to the sum
+        of covalent radii plus 10%.
     change_label : bool (optional)
         Add suffix to the label of the new structure highlighting the performed manipulation.
 
@@ -340,6 +328,19 @@ def add_structure_position(
     -------
     aim2dat.strct.Structure
         Structure with added sub structure at defined postion.
+
+    Raises
+    ------
+    ValueError
+        `dist_threshold` needs to have keys with length 2 containing site indices or element
+        symbols.
+    ValueError
+        `dist_threshold` needs to have keys of type List[str/int] containing site indices or
+        element symbols.
+    TypeError
+        `dist_threshold` needs to be of type int/float/list/tuple/dict or None.
+    ValueError
+        If any distance between atoms is outside the threshold.
     """
     guest_strct, guest_strct_label = _check_guest_structure(guest_structure)
 
@@ -351,8 +352,10 @@ def add_structure_position(
     guest_strct0.set_positions(guest_positions)
 
     new_structure = _merge_structures(structure, guest_strct0, wrap)
-    new_indices = list(range(len(new_structure) - len(guest_strct["elements"]), len(new_structure)))
-    _check_distances(new_structure, new_indices, dist_threshold, False)
+    new_indices = list(
+        range(len(new_structure) - len(guest_strct["elements"]), len(new_structure))
+    )
+    _check_distances(new_structure, new_indices, dist_threshold, None, False)
 
     return new_structure, "_added-" + guest_strct_label
 
@@ -454,14 +457,13 @@ def _add_mol(
         guest_indices = [idx + len(structure) for _, idx, _ in dist_constraints]
         ref_dists = [dist for _, _, dist in dist_constraints]
         dists = new_structure.calculate_distance(
-            list(host_indices), list(guest_indices), backfold_positions=True
+            host_indices, guest_indices, backfold_positions=True
         )
         if isinstance(dists, float):
             dists = [dists]
         elif isinstance(dists, dict):
             dists = [dists[tuple(idx)] for idx in zip(list(host_indices), list(guest_indices))]
         score = sum(abs(dist - ref_dist) for dist, ref_dist in zip(dists, ref_dists))
-    # print(score, angle_pars)
     return new_structure, score
 
 
