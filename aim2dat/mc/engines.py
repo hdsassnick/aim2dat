@@ -121,7 +121,8 @@ class _BaseMonteCarlo:
         return structure.attributes["ref_energy"]
 
     def _print_stdout(self, step, energy):
-        if (step + 1) % int(self.n_steps / self.n_print) == 0:
+        print_interval = int(self.n_steps / self.n_print)
+        if print_interval == 0 or (step + 1) % print_interval == 0:
             # TODO rounding of numbers...
             print(f"Step: {step + 1}, energy: {energy}", flush=True)
 
