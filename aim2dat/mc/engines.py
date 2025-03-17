@@ -176,14 +176,14 @@ class MonteCarlo(_BaseMonteCarlo):
 
 
 class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
-    def __init__(self, structure, components, n_components, n_steps: int, n_print: int = 10, dist_threshold: float = 1.25, ase_calculator = None, random_seed: int = None):
+    def __init__(self, structure, components, n_components, n_steps: int, n_print: int = 10, dist_threshold: float = 1.25, ase_calculator = None, random_seed: int = None, energy_penalty: float = 1.0e5):
         _BaseMonteCarlo.__init__(
             self,
             structure=structure, components=components, n_components=n_components,
             dist_threshold=dist_threshold, n_steps=n_steps, n_print=n_print,
             ase_calculator=ase_calculator, random_seed=random_seed
         )
-        self.energy_penalty = 1.0e5 # TODO remove and add acceptance criteria instead.
+        self.energy_penalty = energy_penalty # TODO remove and add acceptance criteria instead.
         self.insert_energies = []
         self.remove_energies = []
 
@@ -193,7 +193,14 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
         e_structure = self._get_energy(self.structure)
         for i in range(self.n_steps):
             comp_key = ""
-            e_new, e_comp = self._move_wrapper(InsertComponent, (list(self.components.keys())[0], None, self.n_components[0])) # TODO Generalize to multi-component case...
+            if self.energy_penalty is None:
+                for _ in range(1000):
+                    e_new, e_comp = self._move_wrapper(InsertComponent, (list(self.components.keys())[0], None, self.n_components[0]))
+                    if e_new is not None:
+                        break
+            else:
+                e_new, e_comp = self._move_wrapper(InsertComponent, (list(self.components.keys())[0], None, self.n_components[0])) # TODO Generalize to multi-component case...
+
             self.insert_energies.append(e_new - e_structure - e_comp)
             if self.n_components[0] > 0:
                 comp_key = list(self._component_indices.keys())[int(self.rng.random() * len(self._component_indices))]
