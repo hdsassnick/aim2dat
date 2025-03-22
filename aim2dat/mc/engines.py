@@ -37,7 +37,7 @@ class _BaseMonteCarlo:
         # TODO implement components as StructureCollections?
         # TODO how to handle different cases???
         if isinstance(components, Structure):
-            comp_dict = {comp.get("label", "comp"): [components.copy()]}
+            comp_dict = {components.get("label", "comp"): [components.copy()]}
         elif isinstance(components, dict):
             comp_dict = components
         else:
@@ -50,7 +50,8 @@ class _BaseMonteCarlo:
                 if comp_strct.label is None:
                     dict_key = "comp"
                 else:
-                    dict_key = "_".join(comp_strct.label.split("_")[:-1])
+                    label_sp = comp_strct.label.split("_")
+                    dict_key = "_".join(label_sp[:-1]) if len(label_sp) > 1 else comp_strct.label
                 comp_dict.setdefault(dict_key, []).append(comp_strct)
         self.components = comp_dict
         self.n_components = n_components
@@ -106,9 +107,13 @@ class _BaseMonteCarlo:
         elif n_comp - len(self._component_indices) < 0:
             print(f"Removing {len(self._component_indices) - n_comp} molecules of component {comp_label}.", flush=True)
             for i in range(n_comp, len(self._component_indices)):
-                indices = self._component_indices.pop(list(self._component_indices.keys())[len(self._component_indices) - i - 1])
+                indices = self._component_indices.pop(list(self._component_indices.keys())[-1])
                 self.structure = self.structure.delete_atoms(site_indices=indices, change_label=False)
-
+            # TODO change this once attributes are properly implemented..
+            attribs = self.structure.attributes
+            if "ref_energy" in attribs:
+                del attribs["ref_energy"]
+                self.structure._attributes = attribs
 
     def _get_energy(self, structure):
         if "ref_energy" not in structure.attributes:
@@ -169,7 +174,8 @@ class MonteCarlo(_BaseMonteCarlo):
                 self.structure = move.new_structure
                 self._component_indices = move.component_indices
             # TODO move this to a logger function.
-            if i % int(self.n_steps / self.n_store) == 0:
+            store_interval = int(self.n_steps / self.n_store)
+            if store_interval == 0 or (i + 1) % store_interval == 0:
                 self.structures.append(self.structure)
             self._print_stdout(i, self.structure.attributes["ref_energy"])
 
