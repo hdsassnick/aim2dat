@@ -5,8 +5,12 @@ import numpy as np
 
 
 from aim2dat.ext_interfaces import _return_ext_interface_modules
+from aim2dat.strct import SamePositionsError
 from aim2dat.strct.ext_manipulation import add_structure_random, translate_structure, rotate_structure, DistanceThresholdError
 from aim2dat.utils.units import energy, constants
+
+
+# TODO deal with the case that two atoms have the same position.
 
 class BaseMove(abc.ABC):
     n_rand_nrs = 3
@@ -60,7 +64,7 @@ class BaseMove(abc.ABC):
             new_structure = add_structure_random(
                 structure, guest_structure=new_comp, random_nrs=rand_nrs[1:], max_tries=1, dist_threshold=self.dist_threshold, change_label=False
             )
-        except DistanceThresholdError:
+        except (DistanceThresholdError, SamePositionsError):
             return None
 
         #print(self.component_indices)
@@ -87,7 +91,7 @@ class RotateComponent(BaseMove):
                 self.structure, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4],
                 site_indices=self.component_indices[self.component_key], dist_threshold=self.dist_threshold, change_label=False
             )
-        except DistanceThresholdError:
+        except (DistanceThresholdError, SamePositionsError):
             pass
 
 
@@ -102,7 +106,7 @@ class TranslateComponent(BaseMove):
                 self.structure, site_indices=self.component_indices[self.component_key], vector=v,
                 dist_threshold=self.dist_threshold, change_label=False
             )
-        except DistanceThresholdError:
+        except (DistanceThresholdError, SamePositionsError):
             pass
 
 
