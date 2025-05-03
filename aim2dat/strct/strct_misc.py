@@ -219,6 +219,7 @@ def _calc_atomic_distance(structure, site_indices1, site_indices2, backfold_posi
     dist = np.linalg.norm(pos1 - pos2, axis=1)
 
     if structure["cell"] is not None and backfold_positions:
+        # TODO add here pbc condition as well.
         fold_combs = np.array(list(itertools.product([0, -1, 1], repeat=3)))
         pos2_scaled = (
             fold_combs

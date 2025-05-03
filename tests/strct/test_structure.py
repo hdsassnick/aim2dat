@@ -245,15 +245,23 @@ def test_list_methods():
     ]
 
 
-def test_wrap_positions(structure_comparison):
+def test_cell_setter_and_wrap_positions(structure_comparison):
     """Test wrapping positions onto unit cell."""
     strct_dict = load_yaml_file(STRUCTURES_PATH + "GaAs_216_conv.yaml")
+    position = strct_dict["positions"][1]
+    position[1] -= strct_dict["cell"][1][1]
     structure = Structure(**strct_dict)
-    # TODO check get_positions wrap
+    assert structure.get_position(1, wrap=True) == position
     structure_comparison(structure, strct_dict)
     structure = Structure(**strct_dict, wrap=True)
     strct_dict["positions"][1][1] -= strct_dict["cell"][1][1]
     structure_comparison(structure, strct_dict)
+    strct_dict["cell"][1][1] += 2.0
+    strct_dict["positions"] = structure.scaled_positions
+    strct_dict["is_cartesian"] = False
+    structure.cell = strct_dict["cell"]
+    structure_comparison(structure, strct_dict)
+
 
 
 @pytest.mark.parametrize(

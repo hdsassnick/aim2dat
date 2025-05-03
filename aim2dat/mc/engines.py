@@ -9,6 +9,20 @@ from aim2dat.ext_interfaces import _return_ext_interface_modules
 from aim2dat.strct.ext_manipulation import add_structure_random, DistanceThresholdError
 
 
+class _BaseMonteCarloNew:
+
+    def __init__(self, structure, components, dist_threshold, ase_calculator, random_seed):
+        self.structure = structure
+        self.dist_threshold = dist_threshold
+        self.random_seed = random_seed
+        self.ase_calculator = ase_calculator
+
+    def add_component(self, structure, n_structures, label=None, ase_calculator=None):
+        pass
+
+    def _prepare_structure(self):
+        pass
+
 # TODO implement general logging function.
 # TODO implement restart file (binary?)
 class _BaseMonteCarlo:
