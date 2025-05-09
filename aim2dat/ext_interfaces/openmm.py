@@ -9,11 +9,15 @@ import openmm.unit as unit
 import aim2dat.utils.units as a2d_units
 
 
-def get_potential_energy(structure, potential, energy_type="energy", dtype="float64", device="cpu"): # TODO add kwarg for different energy units?
+def get_potential_energy(structure, potential, energy_type="energy", dtype="float64", device="cpu", get_forces=False): # TODO add kwarg for different energy units?
     simulation = create_openmm_simulation(structure, potential, energy_type=energy_type, dtype=dtype, device=device)
-    state = simulation.context.getState(getEnergy=True)
-    energy = float(state.getPotentialEnergy().value_in_unit(unit.kilojoule/unit.mole))
-    return energy * 1000.0 * a2d_units.energy.joule / a2d_units.constants.na
+    state = simulation.context.getState(getEnergy=True, getForces=get_forces)
+    energy = float(state.getPotentialEnergy().value_in_unit(unit.kilojoule/unit.mole)) * 1000.0 * a2d_units.energy.joule / a2d_units.constants.na
+    if get_forces:
+        forces  = [[float(v) * 100.0 * a2d_units.energy.joule / a2d_units.constants.na for v in val] for val in state.getForces().value_in_unit(unit.kilojoule/unit.mole/unit.nanometer)]
+        return energy, forces
+    else:
+        return energy
 
 
 def create_openmm_simulation(structure, potential, temperature=300.0, friction_coeff=1000.0, step_size=0.5, energy_type="energy", dtype="float64", device="cpu"):
