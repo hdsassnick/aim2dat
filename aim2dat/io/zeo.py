@@ -3,15 +3,29 @@ Input operations for zeo++.
 """
 
 
-def write_to_file(struct_dict, file_path):
-    """Write structure to file."""
+def write_zeo_file(file_path: str, struct_dict: dict):
+    """
+    Write structure dictonaryto an input file for zeo++.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the zeo-file. Possible endings are ``'.cssr'``, ``'.v1'``, or ``'.cuc'``.
+    struct_dict : dict
+        Structure which is written to the file.
+
+    Raises
+    ------
+    ValueError
+        Invalid file format. Allowed formats are: ``'.cssr'``, ``'.v1'``, or ``'.cuc'``.
+    """
     if file_path.endswith(".cssr"):
         output = [" ".join(map(str, struct_dict.cell_lengths))]
         output.append
         output.append(
             " ".join(map(str, struct_dict.cell_angles))
             + " SPGR = "
-            + struct_dict.determine_space_group()["space_group"]["international_short"]
+            + struct_dict.calc_space_group()["space_group"]["international_short"]
         )
         output.append(f"{len(struct_dict.positions)} 0")
         output.append(f"0 {struct_dict.label}")
@@ -39,6 +53,11 @@ def write_to_file(struct_dict, file_path):
         )
         for el, pos in zip(struct_dict.elements, struct_dict.scaled_positions):
             output.append(f"{el} {pos[0]} {pos[1]} {pos[2]}")
+
+    else:
+        raise ValueError(
+            "Invalid file format. Allowed formats are: ``'.cssr'``, ``'.v1'``, or ``'.cuc'``."
+        )
 
     with open(file_path, "w") as file:
         file.write("\n".join(output))

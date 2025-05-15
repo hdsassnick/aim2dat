@@ -8,7 +8,7 @@ import pytest
 
 # Internal library imports
 from aim2dat.strct import StructureCollection, StructureOperations
-from aim2dat.io.yaml import load_yaml_file
+from aim2dat.io import read_yaml_file
 
 STRUCTURES_PATH = os.path.dirname(__file__) + "/structures/"
 SPACE_GROUP_PATH = os.path.dirname(__file__) + "/space_group_analysis/"
@@ -23,18 +23,18 @@ POINT_GROUP_PATH = os.path.dirname(__file__) + "/point_group_analysis/"
         ("Cs2Te_62_prim", "yaml", {"symprec": 0.01, "return_sym_operations": True}),
     ],
 )
-def test_determine_space_group(nested_dict_comparison, structure, file_suffix, kwargs):
-    """Test determine_space_group function."""
-    ref_outputs = dict(load_yaml_file(SPACE_GROUP_PATH + structure + "_ref.yaml"))
+def test_calc_space_group(nested_dict_comparison, structure, file_suffix, kwargs):
+    """Test calc_space_group function."""
+    ref_outputs = dict(read_yaml_file(SPACE_GROUP_PATH + structure + "_ref.yaml"))
     strct_c = StructureCollection()
     if file_suffix == "yaml":
-        strct_c.append("test", **load_yaml_file(STRUCTURES_PATH + structure + "." + file_suffix))
+        strct_c.append("test", **read_yaml_file(STRUCTURES_PATH + structure + "." + file_suffix))
     else:
         strct_c.append_from_file(
             "test", STRUCTURES_PATH + structure + "." + file_suffix, backend="internal"
         )
     strct_ops = StructureOperations(strct_c)
-    sg_dict = strct_ops["test"].determine_space_group(**kwargs)
+    sg_dict = strct_ops["test"].calc_space_group(**kwargs)
     nested_dict_comparison(sg_dict, ref_outputs)
     assert strct_c["test"]["attributes"]["space_group"] == sg_dict["space_group"]["number"]
 
@@ -67,11 +67,11 @@ def test_point_group_determination(nested_dict_comparison, structure):
     """
     Test the method to determine the point group.
     """
-    inputs = dict(load_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
+    inputs = dict(read_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
     pg = inputs["attributes"].pop("point_group")
-    ref = dict(load_yaml_file(POINT_GROUP_PATH + structure + "_ref.yaml"))
+    ref = dict(read_yaml_file(POINT_GROUP_PATH + structure + "_ref.yaml"))
     strct_c = StructureCollection()
     strct_c.append(structure, **inputs)
     strct_ops = StructureOperations(strct_c)
-    nested_dict_comparison(strct_ops[structure].determine_point_group(), ref)
+    nested_dict_comparison(strct_ops[structure].calc_point_group(), ref)
     assert strct_c[structure]["attributes"]["point_group"] == pg

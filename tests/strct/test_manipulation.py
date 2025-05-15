@@ -9,7 +9,7 @@ import pytest
 
 # Internal library imports
 from aim2dat.strct import Structure, StructureCollection, StructureOperations
-from aim2dat.io.yaml import load_yaml_file
+from aim2dat.io.yaml import read_yaml_file
 
 
 STRUCTURES_PATH = os.path.dirname(__file__) + "/structures/"
@@ -20,9 +20,9 @@ STRUCTURE_MANIPULATION_PATH = os.path.dirname(__file__) + "/structure_manipulati
 def test_delete_atoms(structure_comparison, structure):
     """Test delete atoms method."""
     strct = Structure(
-        **dict(load_yaml_file(STRUCTURES_PATH + structure + ".yaml")), label="Benzene"
+        **dict(read_yaml_file(STRUCTURES_PATH + structure + ".yaml")), label="Benzene"
     )
-    ref_p = load_yaml_file(STRUCTURE_MANIPULATION_PATH + structure + "_ref.yaml")
+    ref_p = read_yaml_file(STRUCTURE_MANIPULATION_PATH + structure + "_ref.yaml")
     ref_p["structure"]["label"] = structure
     new_strct = strct.delete_atoms(**ref_p["function_args"], change_label=True)
     ref_p["structure"]["label"] += "_del"
@@ -32,11 +32,11 @@ def test_delete_atoms(structure_comparison, structure):
 @pytest.mark.parametrize("structure", ["Cs2Te_62_prim", "GaAs_216_prim", "Cs2Te_19_prim_kinds"])
 def test_element_substitution(structure_comparison, structure):
     """Test element substitution method."""
-    inputs = dict(load_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
+    inputs = dict(read_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
     inputs["label"] = structure
-    inputs2 = dict(load_yaml_file(STRUCTURES_PATH + "Al_225_conv.yaml"))
+    inputs2 = dict(read_yaml_file(STRUCTURES_PATH + "Al_225_conv.yaml"))
     inputs2["label"] = "Al_test"
-    ref_p = load_yaml_file(STRUCTURE_MANIPULATION_PATH + structure + "_ref.yaml")
+    ref_p = read_yaml_file(STRUCTURE_MANIPULATION_PATH + structure + "_ref.yaml")
     strct_collect = StructureCollection()
     strct_collect.append(**inputs)
     strct_collect.append(**inputs2)
@@ -71,16 +71,18 @@ def test_scale_unit_cell_errors():
     with pytest.raises(ValueError) as error:
         structure.scale_unit_cell()
     assert (
-        str(error.value) == "Provide either `scaling_factors` or `pressure` (with `bulk_modulus`)."
+        str(error.value)
+        == "Provide either `scaling_factors`, `pressure` (with `bulk_modulus`) or "
+        + "`random_factors`."
     )
 
 
 @pytest.mark.parametrize("new_label", ["GaAs_216_prim", "GaAs_216_prim_scaled-0.7"])
 def test_scale_unit_cell(structure_comparison, new_label):
     """Test scale unit cell function."""
-    inputs = dict(load_yaml_file(STRUCTURES_PATH + "GaAs_216_prim.yaml"))
+    inputs = dict(read_yaml_file(STRUCTURES_PATH + "GaAs_216_prim.yaml"))
     ref = dict(
-        load_yaml_file(STRUCTURE_MANIPULATION_PATH + "GaAs_216_prim_scale_unit_cell_ref.yaml")
+        read_yaml_file(STRUCTURE_MANIPULATION_PATH + "GaAs_216_prim_scale_unit_cell_ref.yaml")
     )
     ref["structure"]["label"] = new_label
     strct = Structure(**inputs, label="GaAs_216_prim")
@@ -97,6 +99,18 @@ def test_scale_unit_cell_uniform_scaling():
     scaled_structure = structure.scale_unit_cell(scaling_factors=scaling_factors)
     expected_cell = np.array(structure["cell"]) * scaling_factors
     assert np.allclose(scaled_structure["cell"], expected_cell), "Uniform scaling failed"
+
+
+def test_scale_unit_cell_random():
+    """Test scale_unit_cell with random scaling factors."""
+    structure = Structure.from_file(STRUCTURES_PATH + "MOF-5_prim.xsf")
+    scaled_structure = structure.scale_unit_cell(random_factors=0.1, random_seed=0)
+    expected_cell = (
+        (-1.861476878653931, 12.66112401092773, 14.117867364879451),
+        (12.137504475478352, 0.8170898580677926, 14.117867364879451),
+        (12.79806969488115, 11.844034152859939, 0.0),
+    )
+    assert np.allclose(scaled_structure["cell"], expected_cell), "Random scaling failed"
 
 
 def test_scale_unit_cell_anisotropic_scaling():
@@ -144,3 +158,45 @@ def test_scale_unit_cell_full_strain_matrix():
     scaled_structure = structure.scale_unit_cell(scaling_factors=scaling_matrix)
     expected_cell = np.dot(np.array(structure["cell"]), scaling_matrix)
     assert np.allclose(scaled_structure["cell"], expected_cell), "3x3 scaling matrix failed"
+
+
+def test_create_supercell_errors_and_warnings(structure_comparison):
+    """Test appropriate error rasing of create_supercell function."""
+    structure = Structure(**dict(read_yaml_file(STRUCTURES_PATH + "GaAs_216_prim.yaml")))
+    with pytest.raises(TypeError) as error:
+        structure.create_supercell(size="test")
+    assert str(error.value) == "All entries of `size` must be integer numbers."
+    with pytest.raises(ValueError) as error:
+        structure.create_supercell(size=[1, 1, 1, 1])
+    assert str(error.value) == "`size` must have a length of 3."
+    with pytest.raises(ValueError) as error:
+        structure.create_supercell(size=[1, 1, -1])
+    assert str(error.value) == "All entries of `size` must be greater or equal to 1."
+    structure.pbc = [True, False, True]
+    with pytest.warns(UserWarning) as record:
+        sc = structure.create_supercell([1, 2, 1], change_label=False)
+    assert (
+        str(record[0].message)
+        == "Direction 1 is non-periodic but `size[1]` is larger than 1. "
+        + "This direction will be ignored."
+    )
+    structure_comparison(sc, structure)
+
+
+def test_create_supercell_npbc(structure_comparison):
+    """Test create_supercell function for non-periodic input structure."""
+    structure = Structure.from_file(STRUCTURES_PATH + "Benzene.xyz")
+    sc = structure.create_supercell(size=2)
+    structure_comparison(sc, structure)
+
+
+def test_create_supercell(structure_comparison):
+    """Test create_supercell function."""
+    ref = read_yaml_file(STRUCTURE_MANIPULATION_PATH + "GaAs_216_prim_create_spuercell_ref.yaml")
+    structure = Structure(
+        **dict(read_yaml_file(STRUCTURES_PATH + "GaAs_216_prim.yaml")), label="test"
+    )
+    structure.kinds = ["k1", "k2"]
+    structure.site_attributes = {"test": [True, False]}
+    sc = structure.create_supercell(**ref["function_args"])
+    structure_comparison(sc, ref["structure"])

@@ -11,7 +11,8 @@ import copy
 import numpy as np
 
 # Internal library imports
-from aim2dat.strct import Structure, SamePositionsError
+from aim2dat.strct.strct import Structure
+from aim2dat.strct.strct_validation import SamePositionsError
 from aim2dat.strct.ext_manipulation.decorator import external_manipulation_method
 from aim2dat.strct.ext_manipulation.utils import (
     _build_distance_dict,
@@ -22,7 +23,7 @@ from aim2dat.strct.ext_manipulation.rotate_structure import rotate_structure
 from aim2dat.strct.strct_misc import _calc_atomic_distance
 from aim2dat.utils.element_properties import get_element_symbol
 from aim2dat.utils.maths import calc_angle, create_lin_ind_vector
-from aim2dat.io.yaml import load_yaml_file
+from aim2dat.io import read_yaml_file
 
 
 cwd = os.path.dirname(__file__)
@@ -51,10 +52,10 @@ def add_structure_random(
         (viable options are ``'CH3'``, ``'COOH'``, ``'H2O'``, ``'NH2'``, ``'NO2'`` or ``'OH'``), a
         ``Structure`` object or the element symbol to add one single atom.
     max_tries : int
-        Number of tries to add the guest structure. A trie is rejected via the criteria given by
+        Number of tries to add the guest structure. A try is rejected via the criteria given by
         the ``dist_treshold`` parameter.
     random_seed : int or None (optional)
-        Specify the initial random state to ensure reproducible results.
+        Specify the random seed to ensure reproducible results.
     random_nrs : list or None (optional)
         List of random numbers used to derive the position and rotation of the guest molecule. It
         should contain ``max_tries * 7`` entries to cover the maximum amout of tries.
@@ -188,7 +189,7 @@ def add_structure_coord(
     change_label : bool (optional)
         Add suffix to the label of the new structure highlighting the performed manipulation.
     cn_kwargs :
-        Optional keyword arguments passed on to the ``calculate_coordination`` function.
+        Optional keyword arguments passed on to the ``calc_coordination`` function.
 
     Returns
     -------
@@ -223,12 +224,12 @@ def add_structure_coord(
         guest_dir = [1.0, 0.0, 0.0]
         if len(guest_strct) > 1:
             # Get vector of guest atoms for rotation
-            guest_strct_coord = guest_strct.calculate_coordination(**cn_kwargs)
+            guest_strct_coord = guest_strct.calc_coordination(**cn_kwargs)
             guest_dir = -1.0 * _derive_bond_dir(guest_index, guest_strct_coord)
     guest_dir /= np.linalg.norm(np.array(guest_dir))
 
     # Calculate coordination:
-    coord = structure.calculate_coordination(**cn_kwargs)
+    coord = structure.calc_coordination(**cn_kwargs)
 
     # Derive bond directions and rotation to align guest towards bond direction:
     bond_dir = _derive_bond_dir(host_indices[0], coord)
@@ -396,7 +397,7 @@ def _check_guest_structure(guest_strct: Union[Structure, str]) -> Structure:
             )
         except ValueError:
             try:
-                guest_strct_dict = load_yaml_file(
+                guest_strct_dict = read_yaml_file(
                     os.path.join(cwd, "pred_structures", guest_strct + ".yaml")
                 )
                 strct = Structure(
@@ -477,9 +478,7 @@ def _add_mol(
         host_indices = [idx for idx, _, _ in dist_constraints]
         guest_indices = [idx + len(structure) for _, idx, _ in dist_constraints]
         ref_dists = [dist for _, _, dist in dist_constraints]
-        dists = new_structure.calculate_distance(
-            host_indices, guest_indices, backfold_positions=True
-        )
+        dists = new_structure.calc_distance(host_indices, guest_indices, backfold_positions=True)
         if isinstance(dists, float):
             dists = [dists]
         elif isinstance(dists, dict):

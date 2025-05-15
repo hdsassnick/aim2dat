@@ -9,12 +9,12 @@ import pytest
 # Internal library imports:
 from aim2dat.strct import StructureCollection, StructureOperations
 from aim2dat.strct.ext_analysis import (
-    calculate_prdf,
-    calculate_ffingerprint_order_p,
-    calculate_warren_cowley_order_p,
-    calculate_planes,
+    calc_prdf,
+    calc_ffingerprint_order_p,
+    calc_warren_cowley_order_p,
+    calc_planes,
 )
-from aim2dat.io.yaml import load_yaml_file
+from aim2dat.io import read_yaml_file
 
 
 STRUCTURES_PATH = os.path.dirname(__file__) + "/structures/"
@@ -53,21 +53,23 @@ STABILITIES_PATH = os.path.dirname(__file__) + "/stabilities/"
 def test_ffingerprint_order_parameters(structure, ref_order_p):
     """Test order F-fingerprint order parameters."""
     strct_collect = StructureCollection()
-    inputs = dict(load_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
+    inputs = dict(read_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
     # inputs["structure_label"] = structure
     strct_collect.append(structure, **inputs)
     strct_ops = StructureOperations(strct_collect)
-    t_order_p, site_order_p = strct_ops[structure].perform_analysis(
-        method=calculate_ffingerprint_order_p,
+    output = strct_ops[structure].perform_analysis(
+        method=calc_ffingerprint_order_p,
         kwargs={"r_max": 20.0, "delta_bin": 0.005, "sigma": 10.0},
     )
     assert (
-        abs(t_order_p - ref_order_p[0]) < 1e-3
+        abs(output["order_p"] - ref_order_p[0]) < 1e-3
     ), f"Total order parameter of structure {structure} is wrong."
-    assert len(site_order_p) == len(
+    assert len(output["site_order_p"]) == len(
         ref_order_p[1]
     ), f"Wrong number of site order parameters for structure {structure}."
-    for idx, (site_order_p0, ref_site_order_p0) in enumerate(zip(site_order_p, ref_order_p[1])):
+    for idx, (site_order_p0, ref_site_order_p0) in enumerate(
+        zip(output["site_order_p"], ref_order_p[1])
+    ):
         assert (
             abs(site_order_p0 - ref_site_order_p0) < 1e-3
         ), f"Order parameter of site {idx} of structure {structure} is wrong."
@@ -76,13 +78,13 @@ def test_ffingerprint_order_parameters(structure, ref_order_p):
 @pytest.mark.parametrize("structure", ["Cs2Te_62_prim", "GaAs_216_conv", "GaAs_216_prim"])
 def test_prdf_functions(structure, nested_dict_comparison):
     """Test partial radial distribution calculation."""
-    ref = load_yaml_file(PRDF_PATH + structure + "_ref.yaml")
+    ref = read_yaml_file(PRDF_PATH + structure + "_ref.yaml")
     strct_c = StructureCollection()
-    inputs = dict(load_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
+    inputs = dict(read_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
     strct_c.append(structure, **inputs)
     strct_ops = StructureOperations(strct_c)
     element_prdf, atomic_prdf = strct_ops[0].perform_analysis(
-        method=calculate_prdf, kwargs=ref["parameters"]
+        method=calc_prdf, kwargs=ref["parameters"]
     )
 
     assert len(element_prdf) == len(ref["element_prdf"]), "Wrong number of el-pairs."
@@ -124,13 +126,13 @@ def test_prdf_functions(structure, nested_dict_comparison):
 )
 def test_warren_cowley_like_order_parameters(nested_dict_comparison, structure, r_max, max_shells):
     """Test calculation of warren cowley order parameters."""
-    inputs = dict(load_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
-    ref = dict(load_yaml_file(WC_LIKE_ORDER_PATH + structure + "_ref.yaml"))
+    inputs = dict(read_yaml_file(STRUCTURES_PATH + structure + ".yaml"))
+    ref = dict(read_yaml_file(WC_LIKE_ORDER_PATH + structure + "_ref.yaml"))
     strct_c = StructureCollection()
     strct_c.append(structure, **inputs)
     strct_ops = StructureOperations(strct_c)
     output = strct_ops[0].perform_analysis(
-        method=calculate_warren_cowley_order_p,
+        method=calc_warren_cowley_order_p,
         kwargs={"r_max": r_max, "max_shells": max_shells},
     )
     nested_dict_comparison(output, ref)
@@ -143,13 +145,11 @@ def test_planes(structure, file_type):
     """
     Test finding planes.
     """
-    ref = load_yaml_file(PLANES_PATH + structure + "_ref.yaml")
+    ref = read_yaml_file(PLANES_PATH + structure + "_ref.yaml")
     strct_collect = StructureCollection()
     strct_collect.append_from_file("structure", STRUCTURES_PATH + structure + "." + file_type)
     strct_ops = StructureOperations(strct_collect)
-    planes = strct_ops["structure"].perform_analysis(
-        method=calculate_planes, kwargs=ref["parameters"]
-    )
+    planes = strct_ops["structure"].perform_analysis(method=calc_planes, kwargs=ref["parameters"])
 
     for plane, ref_plane in zip(planes, ref["reference"]):
         assert len(plane["site_indices"]) == len(
@@ -171,13 +171,13 @@ def test_planes(structure, file_type):
 
 
 def test_stabilities(create_structure_collection_object):
-    """Test calculate_stabilities function."""
-    ref = load_yaml_file(STABILITIES_PATH + "MOFs_ref.yaml")
+    """Test calc_stabilities function."""
+    ref = read_yaml_file(STABILITIES_PATH + "MOFs_ref.yaml")
     strct_c, _ = create_structure_collection_object(["GaAs_216_conv"])
     for idx0, strct in enumerate(ref["input"]):
         strct_c.append("test_" + str(idx0), **strct)
     strct_ops = StructureOperations(strct_c)
-    f_e, st = strct_ops.calculate_stabilities(unit="eV")
+    f_e, st = strct_ops.calc_stabilities(unit="eV")
     f_e = f_e[1:]
     st = st[1:]
     assert all(

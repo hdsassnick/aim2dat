@@ -9,7 +9,7 @@ import pandas as pd
 
 # Internal library imports
 from aim2dat.strct import Structure, StructureCollection, StructureOperations
-from aim2dat.io.yaml import load_yaml_file
+from aim2dat.io import read_yaml_file
 from aim2dat.ext_interfaces.pandas import _turn_dict_into_pandas_df
 
 # from aim2dat.ext_interfaces.ase_atoms import _create_atoms_from_structure
@@ -54,7 +54,7 @@ def test_basic_features(create_structure_collection_object, structure_comparison
 
     with pytest.raises(TypeError) as error:
         strct1_collect[2.0] = structures_1[2]
-    assert str(error.value) == "`key` needs to be of type int or str."
+    assert str(error.value) == "`key` needs to be of type: str, int, slice, tuple or list."
     with pytest.raises(ValueError) as error:
         strct1_collect[10] = structures_1[2]
     assert str(error.value) == "Index out of range (10 >= 7)."
@@ -143,13 +143,13 @@ def test_create_pandas_df(nested_dict_comparison):
         "min_dist_delta": 0.1,
     }
     structures = ["GaAs_216_prim", "GaAs_216_conv", "Cs2Te_62_prim", "Benzene"]
-    ref = dict(load_yaml_file(EXT_INTERFACES_PATH + "pandas_df_ref.yaml"))
+    ref = dict(read_yaml_file(EXT_INTERFACES_PATH + "pandas_df_ref.yaml"))
 
     strct_collect = StructureCollection()
     for strct in structures:
-        strct_collect.append(strct, **dict(load_yaml_file(STRUCTURES_PATH + strct + ".yaml")))
+        strct_collect.append(strct, **dict(read_yaml_file(STRUCTURES_PATH + strct + ".yaml")))
     strct_ops = StructureOperations(strct_collect)
-    strct_ops[strct_collect.labels].calculate_coordination(**coord_kwargs)
+    strct_ops[strct_collect.labels].calc_coordination(**coord_kwargs)
     df = strct_collect.create_pandas_df()
     df_dict = {}
     for column in df.columns:
@@ -159,7 +159,7 @@ def test_create_pandas_df(nested_dict_comparison):
 
 def test_h5py_interface(structure_comparison):
     """Test store/import functions for the hdf5 interface."""
-    ref_data = load_yaml_file(EXT_INTERFACES_PATH + "hdf5_ref.yaml")
+    ref_data = read_yaml_file(EXT_INTERFACES_PATH + "hdf5_ref.yaml")
     strct_collect = StructureCollection()
     for label, structure in ref_data.items():
         strct_collect.append(label, **structure)
@@ -291,7 +291,7 @@ def test_print(create_structure_collection_object):
 )
 def test_append_from_ase_atoms(structure_comparison, structure):
     """Test append_from_ase_atoms function."""
-    ref_structure_dict = load_yaml_file(STRUCTURES_PATH + structure + ".yaml")
+    ref_structure_dict = read_yaml_file(STRUCTURES_PATH + structure + ".yaml")
     strct_c = StructureCollection()
     strct_c.append_from_ase_atoms(
         ase_atoms=Structure(**ref_structure_dict).to_ase_atoms(), label="test"
@@ -306,7 +306,7 @@ def test_append_from_ase_atoms(structure_comparison, structure):
 )
 def test_append_from_pymatgen_structure(structure_comparison, structure):
     """Test append_from_ase_atoms function."""
-    ref_structure_dict = load_yaml_file(STRUCTURES_PATH + structure + ".yaml")
+    ref_structure_dict = read_yaml_file(STRUCTURES_PATH + structure + ".yaml")
     strct_c = StructureCollection()
     strct_c.append_from_pymatgen_structure(
         pymatgen_structure=Structure(**ref_structure_dict).to_pymatgen_structure(), label="test"
@@ -323,7 +323,7 @@ def test_append_from_aiida_structuredata(
     structure_comparison, structure, use_node_label, use_uuid
 ):
     """Test append_from_aiida_structuredata function."""
-    ref_structure_dict = load_yaml_file(STRUCTURES_PATH + structure + ".yaml")
+    ref_structure_dict = read_yaml_file(STRUCTURES_PATH + structure + ".yaml")
     ref_structure_dict["label"] = structure
     strct = Structure(**ref_structure_dict)
     structure_node = strct.to_aiida_structuredata()
@@ -343,7 +343,7 @@ def test_append_from_aiida_structuredata(
 )
 def test_file_support(structure_comparison, structure, file_suffix):
     """Test the ase atoms interface by loading structures from file."""
-    ref_structure_dict = load_yaml_file(STRUCTURES_PATH + structure + ".yaml")
+    ref_structure_dict = read_yaml_file(STRUCTURES_PATH + structure + ".yaml")
     Structure(**ref_structure_dict).to_file(STRUCTURES_PATH + "test" + file_suffix)
     strct_c = StructureCollection()
     strct_c.append_from_file(file_path=STRUCTURES_PATH + "test" + file_suffix, label="test")
@@ -369,14 +369,14 @@ def test_store_calc_properties(create_structure_collection_object, nested_dict_c
         "okeeffe_weight_threshold": 0.5,
     }
     strct_ops = StructureOperations(strct_c)
-    coord = strct_ops[0].calculate_coordination(**function_args)
+    coord = strct_ops[0].calc_coordination(**function_args)
     assert (
         strct_ops.structures._structures[0]._function_args["coordination"] == function_args
     ), "Function parameters are wrong."
     assert (
         strct_ops.structures._structures[0]["extras"]["coordination"] == coord
     ), "Calculated extra is wrong."
-    assert strct_ops[0].calculate_coordination(**function_args) == coord, "Recalculation is wrong."
+    assert strct_ops[0].calc_coordination(**function_args) == coord, "Recalculation is wrong."
 
     function_args = {
         "symprec": 0.005,
@@ -387,7 +387,7 @@ def test_store_calc_properties(create_structure_collection_object, nested_dict_c
         "return_primitive_structure": False,
         "return_standardized_structure": False,
     }
-    space_group = strct_ops[0].determine_space_group(**function_args)
+    space_group = strct_ops[0].calc_space_group(**function_args)
     assert (
         strct_ops.structures._structures[0]._function_args["space_group"] == function_args
     ), "Function parameters are wrong."
@@ -398,11 +398,9 @@ def test_store_calc_properties(create_structure_collection_object, nested_dict_c
     assert (
         strct_ops.structures._structures[0]["extras"]["space_group"] == space_group
     ), "Calculated extra is wrong."
-    assert (
-        strct_ops[0].determine_space_group(**function_args) == space_group
-    ), "Recalculation is wrong."
+    assert strct_ops[0].calc_space_group(**function_args) == space_group, "Recalculation is wrong."
     function_args["return_sym_operations"] = False
-    space_group = strct_ops[0].determine_space_group(**function_args)
+    space_group = strct_ops[0].calc_space_group(**function_args)
     assert (
         strct_ops.structures._structures[0]._function_args["space_group"] == function_args
     ), "Function parameters are wrong."
@@ -423,7 +421,7 @@ def test_store_calc_properties(create_structure_collection_object, nested_dict_c
     assert not strct_ops.structures._structures[
         1
     ].store_calculated_properties, "Setting `store_calculated_properties` to False not working."
-    space_group = strct_ops[1].determine_space_group(**function_args)
+    space_group = strct_ops[1].calc_space_group(**function_args)
     assert (
         strct_ops.structures._structures[1]._function_args == {}
     ), "Function parameters are wrong."
