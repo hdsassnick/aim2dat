@@ -5,7 +5,11 @@ import pytest
 import numpy as np
 
 # Internal library imports
-from aim2dat.mc.utils import calc_deletion_acceptance, calc_insertion_acceptance
+from aim2dat.mc.utils import (
+    calc_deletion_acceptance,
+    calc_insertion_acceptance,
+    calc_transition_probabilities,
+)
 
 
 def test_calc_deletion_acceptance():
@@ -39,3 +43,29 @@ def test_calc_insertion_acceptance():
     temperature = 298.15
     acc = calc_insertion_acceptance(energies, n_molecules, volume, pressure, temperature)
     assert abs(acc - 0.0585810) < 1e-6
+
+
+def test_calc_transition_probabilities():
+    """Test calc_transition_probabilities function."""
+    ins_energies = -0.15963919
+    del_energies = 0.38483953
+    volume = 5311.37931439
+    n_molecules = 10
+    pressure = 1000.0
+    temperature = 298.15
+    del_prob, ins_prob = calc_transition_probabilities(
+        del_energies, ins_energies, n_molecules, volume, pressure, temperature
+    )
+    assert abs(del_prob - 0.0012110) < 1e-6
+    assert abs(ins_prob - 0.0292905) < 1e-6
+    del_prob, ins_prob = calc_transition_probabilities(
+        del_energies, ins_energies, 0, volume, [pressure], temperature
+    )
+    assert len(del_prob) == 1 and len(ins_prob) == 1
+    assert abs(del_prob[0] - 0.0) < 1e-6
+    assert abs(ins_prob[0] - 0.6443919) < 1e-6
+    with pytest.raises(TypeError) as error:
+        calc_transition_probabilities(
+            del_energies, ins_energies, "test", volume, pressure, temperature
+        )
+    assert str(error.value) == "`n_molecules` need to be of type int."

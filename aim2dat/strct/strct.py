@@ -338,7 +338,9 @@ class Structure(AnalysisMixin, ManipulationMixin):
     def cell(self, value: Union[tuple, list, np.ndarray]):
         if value is not None:
             self._cell, self._inverse_cell = _structure_validate_cell(value)
-            self._cell_volume = abs(np.dot(np.cross(self._cell[0], self._cell[1]), self._cell[2]))
+            self._cell_volume = float(
+                abs(np.dot(np.cross(self._cell[0], self._cell[1]), self._cell[2]))
+            )
             self._cell_lengths = tuple([float(np.linalg.norm(vec)) for vec in self._cell])
             self._cell_angles = tuple(
                 [
@@ -563,6 +565,17 @@ class Structure(AnalysisMixin, ManipulationMixin):
             for idx in range(len(self))
         )
 
+    def get_attribute_keys(self):
+        """
+        Get attribute keys.
+
+        Returns
+        -------
+        tuple
+            Attribute keys.
+        """
+        return tuple(self._attributes.keys())
+
     def get_attribute(self, key: str, value=None):
         """
         Get attribute.
@@ -585,9 +598,13 @@ class Structure(AnalysisMixin, ManipulationMixin):
         key : str
             Key of the attribute.
         value :
-            Value of the attribute.
+            Value of the attribute. If set to `None`, the attribute is deleted.
         """
-        self._attributes[key] = value
+        if value is None:
+            if key in self._attributes:
+                del self._attributes[key]
+        else:
+            self._attributes[key] = value
 
     def set_site_attribute(self, key: str, values: Union[list, tuple]):
         """

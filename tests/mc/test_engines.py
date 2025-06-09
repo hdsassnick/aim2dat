@@ -28,17 +28,14 @@ def test_mc(structure_comparison):
     )
     mc_sim = MonteCarlo(
         structure=mof_strct,
-        components=water_strct,
-        n_components=[5],
+        components={"structure": water_strct, "n_molecules": 5, "label": "comp_0"},
         moves=[ReinsertComponent, TranslateComponent, RotateComponent],
         temperature=298.15,
-        n_steps=5,
-        n_store=5,
         dist_threshold="chen_manz+25",
         ase_calculator=calculator,
         random_seed=111,
     )
-    mc_sim.run()
+    mc_sim.run(n_steps=5, n_store=5)
     assert mc_sim._component_indices == ref["component_indices"]
     assert len(mc_sim.structures) == 5
     for strct, ref_strct in zip(mc_sim.structures, ref["structures"]):
@@ -48,7 +45,6 @@ def test_mc(structure_comparison):
 def test_tmmc(structure_comparison):
     """Test TransitionMatrixMonteCarlo engine."""
     ref = read_yaml_file(REF_PATH + "tmmc.yaml")
-    mof_strct = Structure.from_file(STRUCTURES_PATH + "MOF-303.xsf")
     water_dict = dict(read_yaml_file(STRUCTURES_PATH + "H2O.yaml"))
     water_dict["attributes"]["ref_energy"] = -467.837350
     water_strct = Structure(**water_dict)
@@ -56,17 +52,22 @@ def test_tmmc(structure_comparison):
         model_paths=MLPS_PATH + "mace_MOF-303_compiled.model", default_dtype="float32"
     )
     tmmc_sim = TransitionMatrixMonteCarlo(
-        structure=mof_strct,
-        components=water_strct,
-        n_components=[5],
-        n_steps=5,
+        structure=STRUCTURES_PATH + "MOF-303.xsf",
+        components={"structure": water_strct, "n_molecules": 5, "label": "comp_0"},
         energy_penalty=None,
         dist_threshold="chen_manz+25",
         ase_calculator=calculator,
         random_seed=222,
     )
-    tmmc_sim.run()
+    tmmc_sim.set_tmmc_convergence(6, 2, np.linspace(0.1, 3169.9, 100), 0.01)
+    tmmc_sim.run(20)
     assert tmmc_sim._component_indices == ref["component_indices"]
     structure_comparison(tmmc_sim.structure, ref["structure"])
-    np.testing.assert_allclose(tmmc_sim.insert_energies, ref["insert_energies"], atol=1.0e-5)
-    np.testing.assert_allclose(tmmc_sim.remove_energies, ref["remove_energies"], atol=1.0e-5)
+    np.testing.assert_allclose(tmmc_sim.insertion_energies, ref["insertion_energies"], atol=1.0e-5)
+    np.testing.assert_allclose(tmmc_sim.deletion_energies, ref["deletion_energies"], atol=1.0e-5)
+    np.testing.assert_allclose(tmmc_sim.volumes, ref["volumes"], atol=1.0e-5)
+    for strct_type in ["deletion_structures", "insertion_structures"]:
+        strcts = getattr(tmmc_sim, strct_type)
+        assert len(strcts) == len(ref[strct_type])
+        for strct, ref_strct in zip(strcts, ref[strct_type]):
+            structure_comparison(strct, ref_strct)

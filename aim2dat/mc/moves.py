@@ -1,135 +1,301 @@
+"""Monte Carlo move classes."""
 
+# Standard library imports
 import abc
+import copy
 
+# Third party library imports
 import numpy as np
 
-
+# Internal library imports
 from aim2dat.ext_interfaces import _return_ext_interface_modules
-from aim2dat.strct import SamePositionsError
-from aim2dat.strct.ext_manipulation import add_structure_random, translate_structure, rotate_structure, DistanceThresholdError
+from aim2dat.strct import Structure, SamePositionsError
+from aim2dat.strct.ext_manipulation import (
+    add_structure_random,
+    translate_structure,
+    rotate_structure,
+    DistanceThresholdError,
+)
 from aim2dat.utils.units import energy, constants
 
 
-# TODO deal with the case that two atoms have the same position.
-
 class BaseMove(abc.ABC):
-    n_rand_nrs = 3
+    """Base class for Monte Carlo moves."""
 
-    def __init__(self, structure, components, component_key, component_indices, dist_threshold, ase_calculator):
+    n_rand_nrs = 1
+
+    def __init__(
+        self,
+        structure,
+        components,
+        component_indices,
+        dist_threshold,
+        ase_calculator,
+        openmm_potential,
+    ):
+        """Initialize class."""
         self.structure = structure
         self.components = components
-        self.component_key = component_key
-        self.component_indices = component_indices
+        self.component_indices = copy.deepcopy(component_indices)
         self.dist_threshold = dist_threshold
         self.ase_calculator = ase_calculator
+        self.openmm_potential = openmm_potential
 
         self.new_structure = None
 
-
     @abc.abstractmethod
     def perform_move(self, rand_nrs):
+        """Perform move."""
         pass
 
     def accept_move(self, rand_nr, temperature):
+        """
+        Evaluate accpetance criterium.
+
+        Parameters
+        ----------
+        rand_nr : float
+            Random number.
+        temperature : float
+            Temperature in kelvin.
+
+        Returns
+        -------
+        bool
+            Whether to accept the move.
+        """
         # TODO add presssure/fugacity
-        e = self.get_energy()
-        if e is None:
+        if self.new_structure is None:
             return False
 
-        e_diff = e - self.structure.get_attribute("ref_energy")
+        e_diff = self.get_energy(self.new_structure) - self.get_energy(self.structure)
         if e_diff < 0:
             return True
         else:
-            return rand_nr < min(1.0, np.exp(-1.0 * e_diff / (temperature * constants.kb * energy.j)))
+            return rand_nr < min(
+                1.0, np.exp(-1.0 * e_diff / (temperature * constants.kb * energy.j))
+            )
 
-    def get_energy(self):
-        if self.new_structure is None:
-            return None
+    def get_energy(self, structure, component=None):
+        """
+        Get energy.
 
-        # TODO implement lammps and openmm backends and make backend module
-        if self.ase_calculator is not None:
+        Parameters
+        ----------
+        structure : aim2dat.strct.Structure
+            Structure.
+        component : dict
+            Component dictionary containing the ase calculator or openmm potential.
+
+        Returns
+        -------
+        float
+            Total energy.
+
+        Raises
+        ------
+        ValueError
+            If no backend is found.
+        """
+        energy = structure.get_attribute("ref_energy", None)
+        if energy is not None:
+            return energy
+
+        component = {} if component is None else component
+        ase_calculator = component.get("ase_calculator", self.ase_calculator)
+        # openmm_potential = component.get("openmm_potential", self.openmm_potential)
+        # TODO implement openmm backends
+        if ase_calculator is not None:
             backend_module = _return_ext_interface_modules("ase_calculator")
-            energy = backend_module.get_potential_energy(self.new_structure, self.ase_calculator)
-            self.new_structure.set_attribute("ref_energy", energy)
+            energy = backend_module.get_potential_energy(structure, ase_calculator)
+            structure.set_attribute("ref_energy", energy)
             return energy
         else:
             raise ValueError("No viable backend found to evaluate the energy.")
 
+    def set_random_mol_indices(self, rand_nr):
+        """
+        Select a random molecule and set ``component_index`` and ``component_key``.
+
+        Parameters
+        ----------
+        rand_nr : float
+            Random number.
+        """
+        comp_n_structures = [len(comp) for comp in self.component_indices]
+        idx = int(rand_nr * sum(comp_n_structures))
+        n_prev_comps = 0
+        for comp_idx, n_comp in enumerate(comp_n_structures):
+            if n_prev_comps + n_comp > idx:
+                break
+            n_prev_comps += n_comp
+        idx -= n_prev_comps
+        self.component_index = comp_idx
+        self.component_key = list(self.component_indices[comp_idx].keys())[idx]
+
     def _insert_component(self, structure, rand_nrs):
-        new_comp_idx = int(rand_nrs[0] * len(self.components[self.component_key[0]]))
-        new_key = (self.component_key[0], new_comp_idx, self.component_key[2])
-        new_comp = self.components[self.component_key[0]][new_comp_idx].copy()
-        new_comp.kinds = ["_".join(str(v) for v in new_key)] * len(new_comp)
+        new_mol = self.components[self.component_index]["strct_c"][
+            int(rand_nrs[0] * len(self.components[self.component_index]["strct_c"]))
+        ]
+        mol_idx = (
+            max(
+                [
+                    k[1]
+                    for k in self.component_indices[self.component_index].keys()
+                    if k[0] == new_mol.label
+                ]
+                + [-1]
+            )
+            + 1
+        )
+        new_key = (new_mol.label, mol_idx)
+        new_mol.kinds = [f"{new_mol.label}_{mol_idx}"] * len(new_mol)
         try:
             new_structure = add_structure_random(
-                structure, guest_structure=new_comp, random_nrs=rand_nrs[1:], max_tries=1, dist_threshold=self.dist_threshold, change_label=False
+                structure,
+                guest_structure=new_mol,
+                random_nrs=rand_nrs[1:],
+                max_tries=1,
+                dist_threshold=self.dist_threshold,
+                change_label=False,
             )
+            new_structure.set_attribute("ref_energy", None)
         except (DistanceThresholdError, SamePositionsError):
             return None
-
-        #print(self.component_indices)
-        #del self.component_indices[self.component_key]
-        self.new_component_key = new_key
-        self.component_indices[new_key] = list(range(len(structure), len(structure) + len(new_comp)))
+        self.component_key = new_key
+        self.component_indices[self.component_index][new_key] = list(
+            range(len(structure), len(structure) + len(new_mol))
+        )
         return new_structure
 
-    def _remove_component(self, structure):
-        indices =  self.component_indices.pop(self.component_key)
+    def _delete_component(self, structure, rand_nr):
+        self.set_random_mol_indices(rand_nr)
+        site_indices = self.component_indices[self.component_index].pop(self.component_key)
         # Shift indices to match the new structure:
-        for key, val in self.component_indices.items():
-            self.component_indices[key] = [v - sum(1 if v > i else 0 for i in indices) for v in val]
-        return structure.delete_atoms(site_indices=indices, change_label=False)
+        for comp_idx0, comp in enumerate(self.component_indices):
+            for key, val in comp.items():
+                self.component_indices[comp_idx0][key] = [
+                    v - sum(1 if v > i else 0 for i in site_indices) for v in val
+                ]
+        new_structure = structure.delete_atoms(site_indices=site_indices, change_label=False)
+        new_structure.set_attribute("ref_energy", None)
+        self.deleted_structure = Structure(
+            elements=[structure.elements[idx] for idx in site_indices],
+            positions=[structure.positions[idx] for idx in site_indices],
+            is_cartesian=True,
+            pbc=False,
+        )
+        return new_structure
 
 
 class RotateComponent(BaseMove):
-    n_rand_nrs = 4
+    """Move class to rotate component."""
+
+    n_rand_nrs = 5
 
     def perform_move(self, rand_nrs):
-        #_, site_indices = self.get_random_component_indices(rand_nrs[0])
+        """
+        Perform move.
+
+        Parameters
+        ----------
+        rand_nrs : list
+            List of random numbers.
+        """
+        self.set_random_mol_indices(rand_nrs[0])
+        site_indices = self.component_indices[self.component_index][self.component_key]
         try:
             self.new_structure = rotate_structure(
-                self.structure, angles=rand_nrs[0] * 360.0, vector=rand_nrs[1:4],
-                site_indices=self.component_indices[self.component_key], dist_threshold=self.dist_threshold, change_label=False
+                self.structure,
+                angles=rand_nrs[1] * 360.0,
+                vector=rand_nrs[2:5],
+                site_indices=site_indices,
+                dist_threshold=self.dist_threshold,
+                change_label=False,
             )
+            self.new_structure.set_attribute("ref_energy", None)
         except (DistanceThresholdError, SamePositionsError):
             pass
 
 
 class TranslateComponent(BaseMove):
-    n_rand_nrs = 4
+    """Move class to translate component."""
+
+    n_rand_nrs = 5
 
     def perform_move(self, rand_nrs):
-        v = np.array(rand_nrs[0:3]) - 0.5
-        v *= rand_nrs[1] * np.linalg.norm(v)
+        """
+        Perform move.
+
+        Parameters
+        ----------
+        rand_nrs : list
+            List of random numbers.
+        """
+        self.set_random_mol_indices(rand_nrs[0])
+        site_indices = self.component_indices[self.component_index][self.component_key]
+        v = np.array(rand_nrs[1:4]) - 0.5
+        v *= rand_nrs[2] * np.linalg.norm(v)  # TODO fix this line.
         try:
             self.new_structure = translate_structure(
-                self.structure, site_indices=self.component_indices[self.component_key], vector=v,
-                dist_threshold=self.dist_threshold, change_label=False
+                self.structure,
+                site_indices=site_indices,
+                vector=v,
+                dist_threshold=self.dist_threshold,
+                change_label=False,
             )
+            self.new_structure.set_attribute("ref_energy", None)
         except (DistanceThresholdError, SamePositionsError):
             pass
 
 
-class RemoveComponent(BaseMove):
-    n_rand_nrs = 0
+class DeleteComponent(BaseMove):
+    """Move class to delete component."""
 
-    def perform_move(self, _):
-        self.new_structure = self._remove_component(self.structure)
+    def perform_move(self, rand_nrs):
+        """
+        Perform move.
+
+        Parameters
+        ----------
+        rand_nrs : list
+            List of random numbers.
+        """
+        self.new_structure = self._delete_component(self.structure, rand_nrs[0])
 
 
 class InsertComponent(BaseMove):
+    """Move class to insert component."""
+
     n_rand_nrs = 8
 
     def perform_move(self, rand_nrs):
+        """
+        Perform move.
+
+        Parameters
+        ----------
+        rand_nrs : list
+            List of random numbers.
+        """
+        self.component_index = 0  # TODO fix this?
         self.new_structure = self._insert_component(self.structure, rand_nrs)
 
 
 class ReinsertComponent(BaseMove):
-    n_rand_nrs = 8
+    """Move class to reinsert component."""
+
+    n_rand_nrs = 9
 
     def perform_move(self, rand_nrs):
-        self.new_structure = self._insert_component(self._remove_component(self.structure), rand_nrs)
+        """
+        Perform move.
 
-
-
-
+        Parameters
+        ----------
+        rand_nrs : list
+            List of random numbers.
+        """
+        self.new_structure = self._insert_component(
+            self._delete_component(self.structure, rand_nrs[0]), rand_nrs[1:]
+        )
