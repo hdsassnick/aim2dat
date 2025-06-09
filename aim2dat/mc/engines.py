@@ -321,14 +321,14 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
         initial_steps: int,
         steps: int,
         openmm_integrator=None,
-        openmmm_add_forces=None,
+        openmm_add_forces=None,
         openmm_reporters=None,
     ):
         """Set hybrid MD."""
         self.md_initial_steps = initial_steps
         self.md_steps = steps
         self.openmm_integrator = openmm_integrator
-        self.openmmm_add_forces = [] if openmmm_add_forces is None else openmmm_add_forces
+        self.openmm_add_forces = [] if openmm_add_forces is None else openmm_add_forces
         self.openmm_reporters = [] if openmm_reporters is None else openmm_reporters
 
     def set_tmmc_convergence(
@@ -339,7 +339,6 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
         self.interval_steps = interval_steps
         self.pressures = pressures
         self.convergence_threshold = convergence_threshold
-        self.macro_state_transitions = []
 
     def run(self, n_steps: int, n_print: int = 10, n_store: int = 10):
         """
@@ -359,10 +358,10 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
             self.openmm_simulation = self.structure.to_openmm_simulation(
                 potential=self.openmm_potential,
                 integrator=self.openmm_integrator,
-                # potential_kwargs=openmm_potential_kwargs,
-                # device="cpu"
-            )  # TODO expose device
-            for add_force in self.openmmm_add_forces:
+                potential_kwargs={"dtype": "float64"},
+                device="cpu",
+            )  # TODO expose device and dtype..
+            for add_force in self.openmm_add_forces:
                 self.openmm_simulation.system.addForce(add_force)
             self.openmm_simulation.context.reinitialize(preserveState=True)
             for rep in self.openmm_reporters:
@@ -375,12 +374,6 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
             # Run MD simulation if set:
             if hasattr(self, "md_steps"):
                 md_steps = self.md_initial_steps if step == 0 else self.md_steps
-                if (
-                    hasattr(self, "convergence_threshold")
-                    and len(self.macro_state_transitions) > 0
-                ):
-                    if self.macro_state_transitions[-1] == step:
-                        md_steps = self.md_initial_steps
                 self.openmm_simulation.step(md_steps)
                 self.structure = Structure.from_openmm_simulation(self.openmm_simulation)
                 self._deletion_energies_hist = {}
@@ -504,6 +497,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
             self.volumes,
             self.pressures,
         )
+        self.transition_probabilities = new_probs
         err_minus = 0.0 if sum(self.n_molecules) == 0 else get_error(new_probs[0], old_probs[0])
         err_plus = get_error(new_probs[1], old_probs[1])
         return err_minus < self.convergence_threshold and err_plus < self.convergence_threshold, {

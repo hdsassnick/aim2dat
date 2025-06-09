@@ -13,7 +13,6 @@ import aim2dat.utils.units as a2d_units
 def _create_simulation(structure, potential, integrator, potential_kwargs, bonds, device):
     potential_kwargs = {} if potential_kwargs is None else potential_kwargs
     topology = _create_topology(structure, bonds)
-    print(potential_kwargs)
     system = potential.createSystem(topology, **potential_kwargs)
     simulation = Simulation(
         topology,
