@@ -272,7 +272,7 @@ class MonteCarlo(_BaseMonteCarlo):
                 self._component_indices = move.component_indices
             self._postprocess_step(
                 step,
-                {"energy": self.structure.get_attribute("ref_energy")},
+                {"energy": self.structure.get_attribute("ref_energy", "None")},
                 n_steps,
                 n_print,
                 n_store,
