@@ -57,7 +57,7 @@ def _print_dict(title, dict0, inline=False, float_precision=None):
                 value = f"{value:.{float_precision}f}"
                 val_str += " ".join([""] * (10 + float_precision - len(value))) + value + ","
             else:
-                val_str += value + ","
+                val_str += str(value) + ","
             list0.append(val_str)
     if len(list0) > 0:
         output_str = " " + title
