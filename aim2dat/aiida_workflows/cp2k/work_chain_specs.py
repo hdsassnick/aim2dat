@@ -128,8 +128,8 @@ def core_work_chain_exit_codes(spec):
     )
     spec.exit_code(
         610,
-        "ERROR_SCF_PARAMETERS",
-        message="No mixing parameters found to converge the Kohn-Sham equations.",
+        "ERROR_SCF_CONVERGENCE_NOT_REACHED",
+        message="No parameters found to converge the Kohn-Sham equations.",
     )
     spec.exit_code(
         611,

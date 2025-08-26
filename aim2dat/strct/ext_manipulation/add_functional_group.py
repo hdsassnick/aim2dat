@@ -1,7 +1,7 @@
 """Module that implements functions to change molecular or crystalline structures."""
 
 # Internal library imports
-from aim2dat.strct.strct import Structure
+from aim2dat.strct.structure import Structure
 from aim2dat.strct.ext_manipulation.add_structure import add_structure_coord
 
 
@@ -83,7 +83,7 @@ def add_functional_group(
         structure=structure,
         wrap=wrap,
         host_indices=host_index,
-        guest_index=0,
+        guest_indices=0,
         guest_structure=functional_group,
         bond_length=bond_length,
         r_max=r_max,

@@ -16,9 +16,6 @@ import boto3
 from botocore import UNSIGNED
 from botocore.config import Config
 
-# Internal library imports
-from aim2dat.strct.strct import Structure
-
 
 def _formula_query_args(formula: str) -> dict:
     """Create formula query for the mp database."""
@@ -42,7 +39,7 @@ def _download_structures(
     property_data: list,
     conventional_unit_cell: bool,
     compatible_only: bool,
-) -> List[Tuple[str, Structure]]:
+) -> List[tuple]:
     """Process query and convert entries for optimade API."""
     entries = []
     link = "https://api.materialsproject.org/"
@@ -73,7 +70,7 @@ def _download_structures(
 
 def _download_structure_by_id(
     mp_id: str, mp_api_key: str, structure_type: str, property_data: list
-) -> Structure:
+) -> dict:
     session, mp_version, link = _open_requests_session(mp_api_key)
     response = session.get(
         link + "materials/summary/",
@@ -104,15 +101,11 @@ def _open_requests_session(mp_api_key: str) -> Tuple[requests.Session, str, str]
 
 def _parse_entry(
     entry: dict, additional_data: dict, mp_version: str, structure_type: str
-) -> Tuple[str, Structure]:
+) -> tuple:
     if structure_type == "initial":
         mp_structure = additional_data.pop("initial_structures")[-1]
     else:
         mp_structure = entry["structure"]
-
-    icsd_ids = []
-    if "icsd" in entry["database_IDs"]:
-        icsd_ids = [int(id0.split("-")[-1]) for id0 in entry["database_IDs"]["icsd"]]
 
     structure = {
         "label": "mp_" + entry["material_id"],
@@ -124,7 +117,7 @@ def _parse_entry(
         "attributes": {
             "source_id": entry["material_id"],
             "source": "MP_" + mp_version,
-            "icsd_ids": icsd_ids,
+            "theoretical": entry["theoretical"],
             "formation_energy": {
                 "value": float(entry["formation_energy_per_atom"]),
                 "unit": "eV/atom",
@@ -146,7 +139,7 @@ def _parse_entry(
     for extra_prop, data in additional_data.items():
         convert_fct = globals()["_convert_" + extra_prop]
         structure["extras"][extra_prop] = convert_fct(data)
-    return Structure(**structure)
+    return structure
 
 
 def _retrieve_additional_data(
@@ -200,8 +193,10 @@ def _retrieve_additional_data(
         phonon_data = retrieve_mp_object(
             session, link, "materials/phonon/", {"material_ids": mp_id}, False
         )
-        additional_data["ph_band_structure"] = phonon_data[0]["ph_bs"]
-        additional_data["ph_dos"] = phonon_data[0]["ph_dos"]
+        if phonon_data[0]["phonon_bandstructure"] is not None:
+            additional_data["ph_band_structure"] = phonon_data[0]["phonon_bandstructure"]
+        if phonon_data[0]["phonon_dos"] is not None:
+            additional_data["ph_dos"] = phonon_data[0]["phonon_dos"]
     if "el_dos" in property_data and el_structure_data["dos"] is not None:
         additional_data["el_dos"] = retrieve_mp_s3_object("dos", task_id)
     if "xas_spectra" in property_data:

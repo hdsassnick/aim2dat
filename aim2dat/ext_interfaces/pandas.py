@@ -4,11 +4,11 @@
 import pandas as pd
 
 # Internal library imports
-import aim2dat.utils.chem_formula as utils_cf
+from aim2dat.chem_f import transform_list_to_dict
 
 
 def _parse_el_concentrations(pd_series_dict, dtypes, structure, all_elements):
-    chem_formula = utils_cf.transform_list_to_dict(structure["elements"])
+    chem_formula = transform_list_to_dict(structure["elements"])
     for element in all_elements:
         dtypes["el_conc_" + element] = float
         if "el_conc_" + element not in pd_series_dict:
@@ -22,7 +22,7 @@ def _parse_el_concentrations(pd_series_dict, dtypes, structure, all_elements):
 
 
 def _parse_nr_atoms_per_el(pd_series_dict, dtypes, structure, all_elements):
-    chem_formula = utils_cf.transform_list_to_dict(structure["elements"])
+    chem_formula = transform_list_to_dict(structure["elements"])
     for element in all_elements:
         dtypes["nr_atoms_" + element] = int
         if "nr_atoms_" + element not in pd_series_dict:
@@ -89,6 +89,7 @@ def _parse_general_attribute(pd_series_dict, dtypes, units, entry, dict_key):
 
 
 def _create_strct_c_pandas_df(strct_c, exclude_columns):
+    exclude_columns = [] if exclude_columns is None else exclude_columns
     column_types = {
         "el_concentrations": _parse_el_concentrations,
         "nr_atoms": _parse_nr_atoms,
@@ -97,11 +98,13 @@ def _create_strct_c_pandas_df(strct_c, exclude_columns):
     }
     all_elements = strct_c.get_all_elements()
     all_attributes = strct_c.get_all_attribute_keys()
-    pd_series_dict = {"label": []}
+    pd_series_dict = {"label": [], "structure": []}
     dtypes = {"label": str}
     units = {}
     for strct in strct_c:
         pd_series_dict["label"].append(strct.label)
+        if "structure" not in exclude_columns:
+            pd_series_dict["structure"].append(strct)
         for column_type, process_function in column_types.items():
             if column_type not in exclude_columns:
                 process_function(pd_series_dict, dtypes, strct, all_elements)

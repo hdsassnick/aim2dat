@@ -47,12 +47,12 @@ class _Cp2kBaseParser(Parser):
         result_dict = self._parse_stdout()
 
         # Parse extra output
-        parse_extra_output = True
+        scf_converged = True
         settings = self.node.inputs.settings.get_dict() if "settings" in self.node.inputs else {}
         if "output_check_scf_conv" in settings and settings["output_check_scf_conv"]:
-            if "scf_converged" in result_dict and not result_dict["scf_converged"]:
-                parse_extra_output = False
-        if parse_extra_output:
+            if not result_dict.get("scf_converged", False):
+                scf_converged = False
+        if scf_converged:
             for output_f_label in self.extra_output_functions:
                 output_f = getattr(self, output_f_label)
                 output_dict = output_f(retrieved_temporary_folder)
@@ -74,6 +74,8 @@ class _Cp2kBaseParser(Parser):
         # All exit_codes from the main-output are triggered here
         if "geo_not_converged" in result_dict:
             return self.exit_codes.ERROR_GEOMETRY_CONVERGENCE_NOT_REACHED
+        elif "scf_converged" in result_dict and not scf_converged:
+            return self.exit_codes.ERROR_SCF_CONVERGENCE_NOT_REACHED
         elif "odd_nr_electrons" in result_dict:
             return self.exit_codes.ERROR_ODD_NR_ELECTRONS
         elif "need_added_mos" in result_dict:
@@ -82,7 +84,7 @@ class _Cp2kBaseParser(Parser):
             return self.exit_codes.ERROR_ILL_CONDITIONED_MATRIX
         elif "bad_condition_number" in result_dict:
             return self.exit_codes.ERROR_BAD_CONDITION_NUMBER
-        elif result_dict["exceeded_walltime"]:
+        elif result_dict.get("exceeded_walltime", False):
             return self.exit_codes.ERROR_OUT_OF_WALLTIME
         elif "interrupted" in result_dict:
             return self.exit_codes.ERROR_INTERRUPTED
@@ -92,6 +94,8 @@ class _Cp2kBaseParser(Parser):
             return self.exit_codes.ERROR_INCOMPATIBLE_CODE_VERSION
         elif "incomplete" in result_dict:
             return self.exit_codes.ERROR_OUTPUT_INCOMPLETE
+        elif "io_error" in result_dict:
+            return self.exit_codes.ERROR_READING_OUTPUT_FILE
         else:
             return ExitCode(0)
 
@@ -99,16 +103,15 @@ class _Cp2kBaseParser(Parser):
         """Parse main CP2K output file."""
         fname = self.node.get_option("output_filename")
 
-        if fname not in self.retrieved.list_object_names():
-            raise OutputParsingError("CP2K output file was not retrieved.")
-
         try:
             result_dict = read_cp2k_stdout(
-                self.retrieved.get_object_content(fname), parser_type=self.parser_type
+                self.retrieved.get_object_content(fname),
+                parser_type=self.parser_type,
+                raise_error=False,
             )
         # TODO distinguish different exceptions.
         except IOError:
-            return self.exit_codes.ERROR_READING_OUTPUT_FILE
+            result_dict = {"io_error": True}
 
         if result_dict is None:
             raise OutputParsingError("CP2K version is not supported.")

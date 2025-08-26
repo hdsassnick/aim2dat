@@ -6,7 +6,7 @@ from typing import Union, List, Tuple
 
 # Internal library imports
 from aim2dat.strct import Structure
-from aim2dat.utils.element_properties import get_atomic_radius
+from aim2dat.elements import get_atomic_radius
 
 
 class DistanceThresholdError(ValueError):
@@ -18,7 +18,7 @@ class DistanceThresholdError(ValueError):
 def _build_distance_dict(
     dist_threshold: Union[list, dict, tuple, str, float, int], structure, guest_structure=None
 ) -> Tuple[Union[dict, None], float]:
-    """Construct dictionary from disth_threshold parameter."""
+    """Construct dictionary from dist_threshold parameter."""
     elements = set(structure._element_dict.keys())
 
     if guest_structure is not None:
@@ -72,10 +72,11 @@ def _build_distance_dict(
 
 def _check_distances(
     structure: Structure,
-    indices: List[int],
+    indices: Union[List[int], slice],
     dist_threshold: Union[dict, list, float, int, None],
     distance_dict: Union[dict, None],
     silent: bool,
+    return_score: bool = False,
 ) -> bool:
     """
     Check if the distance between the specified atoms and all other atoms in the structure
@@ -101,6 +102,8 @@ def _check_distances(
     silent : bool (optional)
         If True, no error is raised when atoms are too close. If False, a ValueError is raised
         when atoms are too close to each other.
+    return_score : bool (optional)
+        If true a score will be returned instead of a bool.
 
     Returns
     ----------
@@ -113,6 +116,9 @@ def _check_distances(
     ValueError
         If any distance between atoms is outside the threshold and `silent` is False.
     """
+    score = 0.0
+    max_dist = {}
+
     if dist_threshold is not None:
         distance_dict, _ = _build_distance_dict(dist_threshold, structure)
 
@@ -120,16 +126,31 @@ def _check_distances(
         return True
 
     # Calculate pair-wise distances:
+    if isinstance(indices, slice):
+        indices = list(range(len(structure)))[indices]
     other_indices = [i for i in range(len(structure)) if i not in indices]
     dists = structure.calc_distance(other_indices, indices, backfold_positions=True)
 
-    for idx_pair, dist in dists.items():
-        threshold = distance_dict.get(tuple(sorted(idx_pair)), None)
-        if threshold is None:
-            el_pair = tuple(
-                sorted([structure.elements[idx_pair[0]], structure.elements[idx_pair[1]]])
+    if isinstance(dist_threshold, (int, float)):
+        min_key = min(dists, key=dists.get)
+        min_value = dists[min_key]
+        if min_value < dist_threshold:
+            if silent:
+                return False
+            raise DistanceThresholdError(
+                f"Atoms {min_key[0]} and {min_key[1]} are too close to each other."
             )
-            threshold = distance_dict.get(el_pair, None)
+        if return_score:
+            return abs(min(dists.values()) - dist_threshold)
+        return True
+
+    for idx_pair, dist in dists.items():
+        key = tuple(sorted(idx_pair))
+        threshold = distance_dict.get(key, None)
+
+        if threshold is None:
+            key = tuple(sorted([structure.elements[idx_pair[0]], structure.elements[idx_pair[1]]]))
+            threshold = distance_dict.get(key, None)
         if threshold is None:
             continue
 
@@ -139,10 +160,29 @@ def _check_distances(
             raise DistanceThresholdError(
                 f"Atoms {idx_pair[0]} and {idx_pair[1]} are too close to each other."
             )
-        if threshold[1] is not None and dist > threshold[1]:
-            if silent:
-                return False
-            raise DistanceThresholdError(
-                f"Atoms {idx_pair[0]} and {idx_pair[1]} are too far from each other."
+
+        if threshold[1] is None:
+            score += (
+                abs(dist - threshold[0]) if abs(dist - threshold[0]) < 1.5 * threshold[0] else 0
             )
+            continue
+
+        if dist <= threshold[1]:
+            score += abs(dist - threshold[0])
+            max_dist[key] = True
+            min_max_dist = 0
+        elif key not in max_dist:
+            max_dist[key] = False
+            max_pair = idx_pair
+            min_max_dist = dist
+        elif dist < min_max_dist:
+            max_pair = idx_pair
+    if max_dist and not all(max_dist.values()):
+        if silent:
+            return False
+        raise DistanceThresholdError(
+            f"Atoms {max_pair[0]} and {max_pair[1]} are too far from each other."
+        )
+    if return_score:
+        return score
     return True

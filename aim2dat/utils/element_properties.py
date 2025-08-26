@@ -1,39 +1,7 @@
-"""Module to retrieve physical and chemical properties of elements."""
+"""Deprecated module to retrieve physical and chemical properties of elements."""
 
-# Third party library imports
-from ase.data import (
-    chemical_symbols,
-    atomic_masses,
-    atomic_numbers,
-    atomic_names,
-)
-
-# Internal libraray imports
-import aim2dat.utils.data as internal_data
-
-
-def _check_element(element):
-    """Check if the input element can be processed."""
-    if isinstance(element, str):
-        element = element.capitalize()
-        if element in atomic_names:
-            el_number = atomic_names.index(element)
-            el_symbol = chemical_symbols[el_number]
-            el_name = element
-        elif element in chemical_symbols:
-            el_number = atomic_numbers[element]
-            el_symbol = element
-            el_name = atomic_names[el_number]
-        else:
-            raise ValueError(f"Element '{element}' could not be found.")
-    else:
-        try:
-            el_number = int(element)
-        except TypeError:
-            raise TypeError(f"Element '{element}' needs to have the type str or int.")
-        el_symbol = chemical_symbols[el_number]
-        el_name = atomic_names[el_number]
-    return el_number, el_symbol, el_name
+# Internal library imports
+import aim2dat.elements as new_elements
 
 
 def get_atomic_radius(element, radius_type="covalent"):
@@ -64,12 +32,15 @@ def get_atomic_radius(element, radius_type="covalent"):
     ValueError
         If ``radius_type`` is not supported or has the wrong format.
     """
-    el_number, element, _ = _check_element(element)
-    if radius_type in dir(internal_data.atomic_radii):
-        radius = getattr(internal_data.atomic_radii, radius_type)[element]
-    else:
-        raise ValueError(f"Radius type '{radius_type}' not supported.")
-    return radius
+    from warnings import warn
+
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_atomic_radius(element, radius_type=radius_type)
 
 
 def get_electronegativity(element, scale="pauling"):
@@ -88,13 +59,15 @@ def get_electronegativity(element, scale="pauling"):
     float or None
         Electronegativity of the element.
     """
-    _, element, _ = _check_element(element)
+    from warnings import warn
 
-    if scale in dir(internal_data.electronegativity):
-        electronegativity = getattr(internal_data.electronegativity, scale)[element]
-    else:
-        raise ValueError(f"Scale '{scale}' not supported.")
-    return electronegativity
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_electronegativity(element, scale=scale)
 
 
 def get_atomic_number(element):
@@ -111,8 +84,15 @@ def get_atomic_number(element):
     int
         Atomic number of the element.
     """
-    element_number, _, _ = _check_element(element)
-    return element_number
+    from warnings import warn
+
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_atomic_number(element)
 
 
 def get_element_symbol(element):
@@ -129,8 +109,15 @@ def get_element_symbol(element):
     str
         Symbol of the element.
     """
-    _, element_symbol, _ = _check_element(element)
-    return element_symbol
+    from warnings import warn
+
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_element_symbol(element)
 
 
 def get_atomic_mass(element):
@@ -147,8 +134,15 @@ def get_atomic_mass(element):
     int
         Atomic mass of the element.
     """
-    element_number, _, _ = _check_element(element)
-    return atomic_masses[element_number]
+    from warnings import warn
+
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_atomic_mass(element)
 
 
 def get_val_electrons(element):
@@ -166,8 +160,15 @@ def get_val_electrons(element):
     int
         Number of valence electrons of the element.
     """
-    _, element, _ = _check_element(element)
-    return internal_data.val_electrons[element]
+    from warnings import warn
+
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_val_electrons(element)
 
 
 def get_element_groups(element):
@@ -184,8 +185,15 @@ def get_element_groups(element):
     groups : set
         Set of groups.
     """
-    _, element, _ = _check_element(element)
-    return set(internal_data.element_groups[element])
+    from warnings import warn
+
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_element_groups(element)
 
 
 def get_group(group_label):
@@ -202,8 +210,12 @@ def get_group(group_label):
     elements : set
         Set of element symbols..
     """
-    elements = []
-    for el, groups in internal_data.element_groups.items():
-        if group_label in groups:
-            elements.append(el)
-    return set(elements)
+    from warnings import warn
+
+    warn(
+        "This function will be removed, "
+        + "please use the functions implemented in `aim2dat.elements` instead.",
+        DeprecationWarning,
+        2,
+    )
+    return new_elements.get_group(group_label)

@@ -34,9 +34,16 @@ class _CellPattern(_BasePattern):
         cell = [None, None, None]
         cell_factors = [1.0, 1.0, 1.0]
         m = matches[-1]
+        cell_ref = False
         for line in m.string[m.start() : m.end()].splitlines()[1:-1]:
             line_sp = line.split()
             label = line_sp[0].upper()
+            if "REF" in label:
+                cell_ref = True
+            if cell_ref and "END" in label:
+                cell_ref = False
+            if cell_ref:
+                continue
             if label in self._dir_mapping:
                 cell[self._dir_mapping[label]] = np.array([float(val) for val in line_sp[1:]])
             elif label == "PERIODIC":
@@ -77,7 +84,7 @@ class _KindPattern(_BasePattern):
             for line in m.string[m.start() : m.end()].splitlines()[1:-1]:
                 line_sp = line.split()
                 if line_sp[0].upper() == "ELEMENT":
-                    element = line_sp[1]
+                    element = line_sp[1].strip('"')
                     break
             output["kind_info"][kind] = element
 
@@ -90,7 +97,7 @@ def read_cp2k_restart_structure(folder_path: str) -> Union[dict, List[dict]]:
     Parameters
     ----------
     folder_path : str
-        Path to the folder containing the CP2K ouput-files.
+        Path to the folder containing the CP2K output-files.
 
     Returns
     -------
@@ -124,7 +131,7 @@ def read_optimized_structure(folder_path: str) -> Union[dict, List[dict]]:
     Parameters
     ----------
     folder_path : str
-        Path to the folder containing the CP2K ouput-files.
+        Path to the folder containing the CP2K output-files.
 
     Returns
     -------
@@ -164,7 +171,7 @@ def read_restart_structure(folder_path: str) -> Union[dict, List[dict]]:
     Parameters
     ----------
     folder_path : str
-        Path to the folder containing the CP2K ouput-files.
+        Path to the folder containing the CP2K output-files.
 
     Returns
     -------
