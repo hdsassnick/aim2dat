@@ -45,13 +45,28 @@ def _print_list(title, list0):
     return output_str
 
 
-def _print_dict(title, dict0):
+def _print_dict(title, dict0, inline=False, float_precision=None):
     """Print a dict."""
-    list0 = [str(key) + ": " + str(value) for key, value in dict0.items()]
+    if float_precision is None:
+        list0 = [str(key) + ": " + str(value) for key, value in dict0.items()]
+    else:
+        list0 = []
+        for key, value in dict0.items():
+            val_str = str(key) + ": "
+            if isinstance(value, float):
+                value = f"{value:.{float_precision}f}"
+                val_str += " ".join([""] * (10 + float_precision - len(value))) + value + ","
+            else:
+                val_str += str(value) + ","
+            list0.append(val_str)
     if len(list0) > 0:
-        output_str = " " + title + "\n"
+        output_str = " " + title
+        if not inline:
+            output_str += "\n"
         for item in list0:
-            output_str += "   " + item + "\n"
+            output_str += "   " + item
+            if not inline:
+                output_str += "\n"
     else:
         output_str = " " + title + " not set.\n"
     return output_str
