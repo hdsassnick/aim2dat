@@ -185,6 +185,8 @@ class MonteCarlo(_BaseMonteCarlo):
         structure: Structure,
         moves,  # TODO typehint
         temperature=298.15,
+        pressure=1.0,
+        fugacity_coeff=1.0,
         components: Union[list, dict] = None,
         dist_threshold: Union[dict, list, float, int, str, None] = 0.8,
         ase_calculator=None,  # TODO typehint
@@ -203,6 +205,8 @@ class MonteCarlo(_BaseMonteCarlo):
         )
         self.moves = moves
         self.temperature = temperature
+        self.pressure = pressure
+        self.fugacity_coeff = fugacity_coeff
 
     def run(self, n_steps: int, n_print: int = 10, n_store: int = 10):
         """
@@ -218,7 +222,9 @@ class MonteCarlo(_BaseMonteCarlo):
             Number of stored structures.
         """
         self._prepare_structure()
-        for step in range(n_steps):
+        step = 0
+        while step < n_steps:
+            # for step in range(n_steps):
             move_cls = self.moves[int(self.rng.random() * len(self.moves))]
             move = move_cls(
                 structure=self.structure,
@@ -229,16 +235,30 @@ class MonteCarlo(_BaseMonteCarlo):
                 openmm_potential=self.openmm_potential,
             )
             move.perform_move([self.rng.random() for _ in range(move_cls.n_rand_nrs)])
-            if move.accept_move(self.rng.random(), self.temperature):
+            if move.new_structure is None:
+                continue
+
+            accepted = False
+            if move.accept_move(
+                self.rng.random(), self.temperature, self.pressure, self.fugacity_coeff
+            ):
                 self.structure = move.new_structure
                 self._component_indices = move.component_indices
+                accepted = True
             self._postprocess_step(
                 step,
-                {"energy": self.structure.attributes.get("ref_energy", "None")},
+                {
+                    "Delta E": move.energy_difference,
+                    "Move": move.name,
+                    "Acceptance": move.acceptance,
+                    "Accepted": accepted,
+                    "n_comp": len(self._component_indices[0]),
+                },
                 n_steps,
                 n_print,
                 n_store,
             )
+            step += 1
 
 
 class TransitionMatrixMonteCarlo(_BaseMonteCarlo):

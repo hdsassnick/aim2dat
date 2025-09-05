@@ -16,13 +16,15 @@ from aim2dat.strct.ext_manipulation import (
     rotate_structure,
     DistanceThresholdError,
 )
-from aim2dat.utils.units import energy, constants
+import aim2dat.utils.units as a2d_units
 
 
 class BaseMove(abc.ABC):
     """Base class for Monte Carlo moves."""
 
+    name = "MC Move"
     n_rand_nrs = 1
+    n_change = 0
 
     def __init__(
         self,
@@ -48,7 +50,7 @@ class BaseMove(abc.ABC):
         """Perform move."""
         pass
 
-    def accept_move(self, rand_nr, temperature):
+    def accept_move(self, rand_nr, temperature, pressure=1.0, fugacity_coeff=1.0):
         """
         Evaluate accpetance criterium.
 
@@ -66,15 +68,48 @@ class BaseMove(abc.ABC):
         """
         # TODO add presssure/fugacity
         if self.new_structure is None:
+            self.energy_difference = 1.0  # TODO find better value?
+            self.acceptance = 0.0
             return False
 
         e_diff = self.get_energy(self.new_structure) - self.get_energy(self.structure)
-        if e_diff < 0:
+        if self.n_change == 0 and e_diff < 0:
+            self.energy_difference = e_diff
+            self.acceptance = 1.0
             return True
-        else:
-            return rand_nr < min(
-                1.0, np.exp(-1.0 * e_diff / (temperature * constants.kb * energy.j))
+
+        beta = 1.0 / (temperature * a2d_units.constants.kb * a2d_units.energy.j)
+        prefactor = 1.0
+        n_molecules = len(self.component_indices[self.component_index[0]])
+        if self.n_change == -1:
+            e_comp = self.get_energy(
+                self.components[self.component_index[0]]["structure"],
+                self.components[self.component_index[0]],
             )
+            e_diff += e_comp
+            prefactor = (n_molecules + 1) / (
+                self.structure.cell_volume
+                * beta
+                * fugacity_coeff
+                * pressure
+                * a2d_units.pressure.pascal
+            )
+        elif self.n_change == 1:
+            e_comp = self.get_energy(
+                self.components[self.component_index[0]]["structure"],
+                self.components[self.component_index[0]],
+            )
+            e_diff -= e_comp
+            prefactor = (
+                self.structure.cell_volume
+                * beta
+                * fugacity_coeff
+                * pressure
+                * a2d_units.pressure.pascal
+            ) / n_molecules
+        self.energy_difference = e_diff
+        self.acceptance = min(1.0, prefactor * np.exp(-beta * e_diff))
+        return rand_nr < self.acceptance
 
     def get_energy(self, structure, component=None):
         """
@@ -152,27 +187,31 @@ class BaseMove(abc.ABC):
 
     def _delete_component(self, structure, rand_nr):
         self.set_random_mol_index(rand_nr)
-        site_indices = self.component_indices[self.component_index[0]].pop(self.component_index[1])
-        # Shift indices to match the new structure:
-        for comp_idx0, comp in enumerate(self.component_indices):
-            for idx, val in enumerate(comp):
-                self.component_indices[comp_idx0][idx] = [
-                    v - sum(1 if v > i else 0 for i in site_indices) for v in val
-                ]
-        new_structure = structure.delete_atoms(site_indices=site_indices, change_label=False)
-        new_structure.attributes["ref_energy"] = None
-        self.deleted_structure = Structure(
-            elements=[structure.elements[idx] for idx in site_indices],
-            positions=[structure.positions[idx] for idx in site_indices],
-            is_cartesian=True,
-            pbc=False,
-        )
-        return new_structure
+        if len(self.component_indices[self.component_index[0]]) > 0:
+            site_indices = self.component_indices[self.component_index[0]].pop(
+                self.component_index[1]
+            )
+            # Shift indices to match the new structure:
+            for comp_idx0, comp in enumerate(self.component_indices):
+                for idx, val in enumerate(comp):
+                    self.component_indices[comp_idx0][idx] = [
+                        v - sum(1 if v > i else 0 for i in site_indices) for v in val
+                    ]
+            new_structure = structure.delete_atoms(site_indices=site_indices, change_label=False)
+            new_structure.attributes["ref_energy"] = None
+            self.deleted_structure = Structure(
+                elements=[structure.elements[idx] for idx in site_indices],
+                positions=[structure.positions[idx] for idx in site_indices],
+                is_cartesian=True,
+                pbc=False,
+            )
+            return new_structure
 
 
 class RotateComponent(BaseMove):
     """Move class to rotate component."""
 
+    name = "Rot."
     n_rand_nrs = 5
 
     def perform_move(self, rand_nrs):
@@ -185,24 +224,26 @@ class RotateComponent(BaseMove):
             List of random numbers.
         """
         self.set_random_mol_index(rand_nrs[0])
-        site_indices = self.component_indices[self.component_index[0]][self.component_index[1]]
-        try:
-            self.new_structure = rotate_structure(
-                self.structure,
-                angles=rand_nrs[1] * 360.0,
-                vector=rand_nrs[2:5],
-                site_indices=site_indices,
-                dist_threshold=self.dist_threshold,
-                change_label=False,
-            )
-            self.new_structure.attributes["ref_energy"] = None
-        except (DistanceThresholdError, SamePositionsError):
-            pass
+        if len(self.component_indices[self.component_index[0]]) > 0:
+            site_indices = self.component_indices[self.component_index[0]][self.component_index[1]]
+            try:
+                self.new_structure = rotate_structure(
+                    self.structure,
+                    angles=rand_nrs[1] * 360.0,
+                    vector=rand_nrs[2:5],
+                    site_indices=site_indices,
+                    dist_threshold=self.dist_threshold,
+                    change_label=False,
+                )
+                self.new_structure.attributes["ref_energy"] = None
+            except (DistanceThresholdError, SamePositionsError):
+                pass
 
 
 class TranslateComponent(BaseMove):
     """Move class to translate component."""
 
+    name = "Tra."
     n_rand_nrs = 5
 
     def perform_move(self, rand_nrs):
@@ -215,24 +256,28 @@ class TranslateComponent(BaseMove):
             List of random numbers.
         """
         self.set_random_mol_index(rand_nrs[0])
-        site_indices = self.component_indices[self.component_index[0]][self.component_index[1]]
-        v = np.array(rand_nrs[1:4]) - 0.5
-        v *= rand_nrs[2] * np.linalg.norm(v)  # TODO fix this line.
-        try:
-            self.new_structure = translate_structure(
-                self.structure,
-                site_indices=site_indices,
-                vector=v,
-                dist_threshold=self.dist_threshold,
-                change_label=False,
-            )
-            self.new_structure.attributes["ref_energy"] = None
-        except (DistanceThresholdError, SamePositionsError):
-            pass
+        if len(self.component_indices[self.component_index[0]]) > 0:
+            site_indices = self.component_indices[self.component_index[0]][self.component_index[1]]
+            v = np.array(rand_nrs[1:4]) - 0.5
+            v *= rand_nrs[2] * np.linalg.norm(v)  # TODO fix this line.
+            try:
+                self.new_structure = translate_structure(
+                    self.structure,
+                    site_indices=site_indices,
+                    vector=v,
+                    dist_threshold=self.dist_threshold,
+                    change_label=False,
+                )
+                self.new_structure.attributes["ref_energy"] = None
+            except (DistanceThresholdError, SamePositionsError):
+                pass
 
 
 class DeleteComponent(BaseMove):
     """Move class to delete component."""
+
+    name = "Del."
+    n_change = -1
 
     def perform_move(self, rand_nrs):
         """
@@ -249,7 +294,9 @@ class DeleteComponent(BaseMove):
 class InsertComponent(BaseMove):
     """Move class to insert component."""
 
+    name = "Ins."
     n_rand_nrs = 8
+    n_change = 1
 
     def perform_move(self, rand_nrs):
         """
@@ -267,6 +314,7 @@ class InsertComponent(BaseMove):
 class ReinsertComponent(BaseMove):
     """Move class to reinsert component."""
 
+    name = "Rei."
     n_rand_nrs = 8
 
     def perform_move(self, rand_nrs):
