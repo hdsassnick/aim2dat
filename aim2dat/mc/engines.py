@@ -208,6 +208,9 @@ class MonteCarlo(_BaseMonteCarlo):
         self.pressure = pressure
         self.fugacity_coeff = fugacity_coeff
 
+        self.move_statistics = [[0, 0] for _ in range(len(moves))]
+        self.uptake = []
+
     def run(self, n_steps: int, n_print: int = 10, n_store: int = 10):
         """
         Run simulation.
@@ -224,9 +227,8 @@ class MonteCarlo(_BaseMonteCarlo):
         self._prepare_structure()
         step = 0
         while step < n_steps:
-            # for step in range(n_steps):
-            move_cls = self.moves[int(self.rng.random() * len(self.moves))]
-            move = move_cls(
+            move_idx = int(self.rng.random() * len(self.moves))
+            move = self.moves[move_idx](
                 structure=self.structure,
                 components=self._components,
                 component_indices=self._component_indices,
@@ -234,7 +236,7 @@ class MonteCarlo(_BaseMonteCarlo):
                 ase_calculator=self.ase_calculator,
                 openmm_potential=self.openmm_potential,
             )
-            move.perform_move([self.rng.random() for _ in range(move_cls.n_rand_nrs)])
+            move.perform_move([self.rng.random() for _ in range(self.moves[move_idx].n_rand_nrs)])
             if move.new_structure is None:
                 continue
 
@@ -244,15 +246,19 @@ class MonteCarlo(_BaseMonteCarlo):
             ):
                 self.structure = move.new_structure
                 self._component_indices = move.component_indices
+                self.move_statistics[move_idx][0] += 1
                 accepted = True
+
+            self.move_statistics[move_idx][1] += 1
+            self.uptake.append(len(self._component_indices[0]))
             self._postprocess_step(
                 step,
                 {
+                    "Energy": self.structure.attributes.get("ref_energy", 0.0),
                     "Delta E": move.energy_difference,
-                    "Move": move.name,
-                    "Acceptance": move.acceptance,
-                    "Accepted": accepted,
                     "n_comp": len(self._component_indices[0]),
+                    "Move": move.name,
+                    "Accepted": accepted,
                 },
                 n_steps,
                 n_print,
