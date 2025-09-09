@@ -187,6 +187,36 @@ class BaseMove(abc.ABC):
         self.component_indices[self.component_index[0]].append(indices)
         return new_structure
 
+    def _insert_component_coord(self, structure, rand_nrs):
+        new_mol = self.components[self.component_index[0]]["structure"]
+        host_index = int(rand_nrs[1] * len(self.structure))
+        guest_index = int(rand_nrs[2] * len(new_mol))
+        bond_length = (1.0 + 2.0 * rand_nrs[3]) * (
+            get_atomic_radius(self.structure.elements[host_index], radius_type="chen_manz")
+            + get_atomic_radius(new_mol.elements[guest_index], radius_type="chen_manz")
+        )
+        try:
+            new_structure = add_structure_coord(
+                self.structure,
+                host_indices=host_index,
+                guest_indices=guest_index,
+                guest_structure=new_mol,
+                # rotate_guest=True,
+                bond_length=bond_length,
+                method="atomic_radius",
+                radius_type="chen_manz",
+                atomic_radius_delta=0.15,
+                dist_threshold=self.dist_threshold,
+                change_label=False,
+            )
+            new_structure.attributes["ref_energy"] = None
+        except (DistanceThresholdError, SamePositionsError):
+            return None
+
+        indices = list(range(len(self.structure), len(self.structure) + len(new_mol)))
+        self.component_indices[self.component_index[0]].append(indices)
+        return new_structure
+
     def _delete_component(self, structure, rand_nr):
         self.set_random_mol_index(rand_nr)
         if len(self.component_indices[self.component_index[0]]) > 0:
@@ -330,33 +360,7 @@ class InsertComponentCoord(BaseMove):
             List of random numbers.
         """
         self.component_index = (int(rand_nrs[0] * len(self.component_indices)), None)
-        new_mol = self.components[self.component_index[0]]["structure"]
-        host_index = int(rand_nrs[1] * len(self.structure))
-        guest_index = int(rand_nrs[2] * len(new_mol))
-        bond_length = (1.0 + 2.0 * rand_nrs[3]) * (
-            get_atomic_radius(self.structure.elements[host_index], radius_type="chen_manz")
-            + get_atomic_radius(new_mol.elements[guest_index], radius_type="chen_manz")
-        )
-        try:
-            self.new_structure = add_structure_coord(
-                self.structure,
-                host_indices=host_index,
-                guest_indices=guest_index,
-                guest_structure=new_mol,
-                # rotate_guest=True,
-                bond_length=bond_length,
-                method="atomic_radius",
-                radius_type="chen_manz",
-                atomic_radius_delta=0.15,
-                dist_threshold=self.dist_threshold,
-                change_label=False,
-            )
-        except (DistanceThresholdError, SamePositionsError):
-            return None
-
-        indices = list(range(len(self.structure), len(self.structure) + len(new_mol)))
-        self.component_indices[self.component_index[0]].append(indices)
-        self.new_structure.attributes["ref_energy"] = None
+        self.new_structure = self._insert_component_coord(self.structure, rand_nrs[1:])
 
 
 class ReinsertComponent(BaseMove):
@@ -375,5 +379,25 @@ class ReinsertComponent(BaseMove):
             List of random numbers.
         """
         self.new_structure = self._insert_component(
+            self._delete_component(self.structure, rand_nrs[0]), rand_nrs[1:]
+        )
+
+
+class ReinsertComponentCoord(BaseMove):
+    """Move class to re-insert a component coordinated to another site."""
+
+    name = "CoR."
+    n_rand_nrs = 4
+
+    def perform_move(self, rand_nrs):
+        """
+        Perform move.
+
+        Parameters
+        ----------
+        rand_nrs : list
+            List of random numbers.
+        """
+        self.new_structure = self._insert_component_coord(
             self._delete_component(self.structure, rand_nrs[0]), rand_nrs[1:]
         )
