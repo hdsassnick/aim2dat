@@ -189,9 +189,9 @@ class BaseMove(abc.ABC):
 
     def _insert_component_coord(self, structure, rand_nrs):
         new_mol = self.components[self.component_index[0]]["structure"]
-        host_index = int(rand_nrs[1] * len(self.structure))
-        guest_index = int(rand_nrs[2] * len(new_mol))
-        bond_length = (1.0 + 2.0 * rand_nrs[3]) * (
+        host_index = int(rand_nrs[0] * len(self.structure))
+        guest_index = int(rand_nrs[1] * len(new_mol))
+        bond_length = (1.0 + 2.0 * rand_nrs[2]) * (
             get_atomic_radius(self.structure.elements[host_index], radius_type="chen_manz")
             + get_atomic_radius(new_mol.elements[guest_index], radius_type="chen_manz")
         )
