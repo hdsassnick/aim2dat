@@ -9,7 +9,7 @@ import numpy as np
 
 # Internal library imports
 from aim2dat.strct import Structure
-from aim2dat.mc.moves import InsertComponent, DeleteComponent
+from aim2dat.mc.moves import InsertComponent, InsertComponentCoord, DeleteComponent
 from aim2dat.strct.ext_manipulation import add_structure_random, DistanceThresholdError
 from aim2dat.utils.print import _print_dict
 
@@ -280,6 +280,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
         openmm_potential=None,
         random_seed: int = None,
         use_molecule_geometry: bool = False,
+        use_coord_insertion: bool = False,
     ):
         """Initialize class."""
         _BaseMonteCarlo.__init__(
@@ -292,6 +293,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
             random_seed=random_seed,
         )
         self.use_molecule_geometry = use_molecule_geometry
+        self.use_coord_insertion = use_coord_insertion
         self.structures = []  # TODO move to base class.
         self.insertion_energies = []
         self.deletion_energies = []
@@ -314,6 +316,8 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
             Number of stored structures.
         """
         self._prepare_structure()
+
+        ins_class = InsertComponentCoord if self.use_coord_insertion else InsertComponent
 
         for step in range(n_steps):
             output_dict = {}
@@ -356,7 +360,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
 
             # Calculate insertion energy:
             for i in range(1000):
-                ins_move = InsertComponent(
+                ins_move = ins_class(
                     structure=self.structure,
                     components=self._components,
                     component_indices=self._component_indices,
@@ -364,7 +368,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
                     ase_calculator=self.ase_calculator,
                     openmm_potential=self.openmm_potential,
                 )
-                rand_nrs = [self.rng.random() for _ in range(InsertComponent.n_rand_nrs)]
+                rand_nrs = [self.rng.random() for _ in range(ins_class.n_rand_nrs)]
                 ins_move.perform_move(rand_nrs)
                 if ins_move.new_structure is not None:
                     break
