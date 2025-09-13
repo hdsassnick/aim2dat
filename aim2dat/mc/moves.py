@@ -195,6 +195,7 @@ class BaseMove(abc.ABC):
             get_atomic_radius(self.structure.elements[host_index], radius_type="chen_manz")
             + get_atomic_radius(new_mol.elements[guest_index], radius_type="chen_manz")
         )
+        indices = list(range(len(self.structure), len(self.structure) + len(new_mol)))
         try:
             new_structure = add_structure_coord(
                 self.structure,
@@ -205,7 +206,15 @@ class BaseMove(abc.ABC):
                 bond_length=bond_length,
                 method="atomic_radius",
                 radius_type="chen_manz",
-                atomic_radius_delta=0.15,
+                atomic_radius_delta=0.1,
+                dist_threshold=self.dist_threshold,
+                change_label=False,
+            )
+            new_structure = rotate_structure(
+                new_structure,
+                angles=rand_nrs[3] * 5.0,
+                vector=rand_nrs[4:7],
+                site_indices=indices,
                 dist_threshold=self.dist_threshold,
                 change_label=False,
             )
@@ -213,7 +222,6 @@ class BaseMove(abc.ABC):
         except (DistanceThresholdError, SamePositionsError):
             return None
 
-        indices = list(range(len(self.structure), len(self.structure) + len(new_mol)))
         self.component_indices[self.component_index[0]].append(indices)
         return new_structure
 
@@ -347,7 +355,7 @@ class InsertComponentCoord(BaseMove):
     """Move class to insert a component coordinated to another site."""
 
     name = "CoI."
-    n_rand_nrs = 4
+    n_rand_nrs = 8
     n_change = 1
 
     def perform_move(self, rand_nrs):
@@ -387,7 +395,7 @@ class ReinsertComponentCoord(BaseMove):
     """Move class to re-insert a component coordinated to another site."""
 
     name = "CoR."
-    n_rand_nrs = 4
+    n_rand_nrs = 8
 
     def perform_move(self, rand_nrs):
         """
