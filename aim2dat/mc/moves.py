@@ -291,7 +291,7 @@ class TranslateComponent(BaseMove):
         if len(self.component_indices[self.component_index[0]]) > 0:
             site_indices = self.component_indices[self.component_index[0]][self.component_index[1]]
             v = np.array(rand_nrs[1:4]) - 0.5
-            v *= rand_nrs[2] * np.linalg.norm(v)  # TODO fix this line.
+            v *= 0.5 * rand_nrs[4] / np.linalg.norm(v)
             try:
                 self.new_structure = translate_structure(
                     self.structure,
