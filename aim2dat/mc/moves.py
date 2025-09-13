@@ -195,10 +195,9 @@ class BaseMove(abc.ABC):
             get_atomic_radius(self.structure.elements[host_index], radius_type="chen_manz")
             + get_atomic_radius(new_mol.elements[guest_index], radius_type="chen_manz")
         )
-        indices = list(range(len(self.structure), len(self.structure) + len(new_mol)))
         try:
             new_structure = add_structure_coord(
-                self.structure,
+                structure,
                 host_indices=host_index,
                 guest_indices=guest_index,
                 guest_structure=new_mol,
@@ -210,6 +209,7 @@ class BaseMove(abc.ABC):
                 dist_threshold=self.dist_threshold,
                 change_label=False,
             )
+            indices = list(range(len(structure), len(structure) + len(new_mol)))
             new_structure = rotate_structure(
                 new_structure,
                 angles=rand_nrs[3] * 5.0,
