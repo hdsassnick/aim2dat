@@ -189,10 +189,10 @@ class BaseMove(abc.ABC):
 
     def _insert_component_coord(self, structure, rand_nrs):
         new_mol = self.components[self.component_index[0]]["structure"]
-        host_index = int(rand_nrs[0] * len(self.structure))
+        host_index = int(rand_nrs[0] * len(structure))
         guest_index = int(rand_nrs[1] * len(new_mol))
         bond_length = (1.0 + 2.0 * rand_nrs[2]) * (
-            get_atomic_radius(self.structure.elements[host_index], radius_type="chen_manz")
+            get_atomic_radius(structure.elements[host_index], radius_type="chen_manz")
             + get_atomic_radius(new_mol.elements[guest_index], radius_type="chen_manz")
         )
         try:
@@ -209,7 +209,11 @@ class BaseMove(abc.ABC):
                 dist_threshold=self.dist_threshold,
                 change_label=False,
             )
-            indices = list(range(len(structure), len(structure) + len(new_mol)))
+        except (DistanceThresholdError, SamePositionsError):
+            return None
+
+        indices = list(range(len(structure), len(structure) + len(new_mol)))
+        try:
             new_structure = rotate_structure(
                 new_structure,
                 angles=rand_nrs[3] * 5.0,
