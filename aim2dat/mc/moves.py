@@ -343,48 +343,6 @@ class BaseMove(abc.ABC):
         idx -= n_prev_comps
         self.component_index = (comp_idx, idx)
 
-    def _insert_component_coord(self, structure, rand_nrs):
-        new_mol = self.components[self.component_index[0]]["structure"]
-        host_index = int(rand_nrs[0] * len(structure))
-        guest_index = int(rand_nrs[1] * len(new_mol))
-        bond_length = (1.0 + 2.0 * rand_nrs[2]) * (
-            get_atomic_radius(structure.elements[host_index], radius_type="chen_manz")
-            + get_atomic_radius(new_mol.elements[guest_index], radius_type="chen_manz")
-        )
-        try:
-            new_structure = add_structure_coord(
-                structure,
-                host_indices=host_index,
-                guest_indices=guest_index,
-                guest_structure=new_mol,
-                # rotate_guest=True,
-                bond_length=bond_length,
-                method="atomic_radius",
-                radius_type="chen_manz",
-                atomic_radius_delta=0.1,
-                dist_threshold=self.dist_threshold,
-                change_label=False,
-            )
-        except (DistanceThresholdError, SamePositionsError):
-            return None
-
-        indices = list(range(len(structure), len(structure) + len(new_mol)))
-        try:
-            new_structure = rotate_structure(
-                new_structure,
-                angles=rand_nrs[3] * 5.0,
-                vector=rand_nrs[4:7],
-                site_indices=indices,
-                dist_threshold=self.dist_threshold,
-                change_label=False,
-            )
-            new_structure.attributes["ref_energy"] = None
-        except (DistanceThresholdError, SamePositionsError):
-            return None
-
-        self.component_indices[self.component_index[0]].append(indices)
-        return new_structure
-
     def _delete_component(self, structure, rand_nr):
         self.set_random_mol_index(rand_nr)
         if len(self.component_indices[self.component_index[0]]) > 0:
@@ -411,7 +369,7 @@ class BaseMove(abc.ABC):
         self, rand_nrs, structure, wrapper_fct, allow_zero_comp=False, **kwargs
     ):
         rand_nrs_all = [
-            rand_nrs[i * self.n_procs : i * self.n_procs + self.n_rand_nrs_p_move]
+            rand_nrs[i * self.n_rand_nrs_p_move : (i + 1) * self.n_rand_nrs_p_move]
             for i in range(self.n_procs)
         ]
         wrapper_inp = []

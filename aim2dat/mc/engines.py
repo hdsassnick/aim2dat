@@ -239,7 +239,7 @@ class MonteCarlo(_BaseMonteCarlo):
             move.component_indices = copy.deepcopy(self._component_indices)
             move.dist_threshold = self.dist_threshold
             move.ase_calculator = self.ase_calculator
-            move.perform_move([self.rng.random() for _ in range(self.moves[move_idx].n_rand_nrs)])
+            move.perform_move([self.rng.random() for _ in range(move.n_rand_nrs)])
             if move.new_structure is None:
                 continue
 
