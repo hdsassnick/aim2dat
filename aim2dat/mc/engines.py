@@ -374,7 +374,6 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
                 ins_move.perform_move(rand_nrs)
                 if ins_move.new_structure is not None:
                     break
-            print(f"Needed {i} moves.")
             if ins_move.new_structure is None:
                 raise ValueError("Could not insert molecule, structure seems too aggregated.")
             ins_indices = ins_move.component_indices[ins_move.component_index[0]][-1]
