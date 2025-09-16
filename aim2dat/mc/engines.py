@@ -187,6 +187,7 @@ class MonteCarlo(_BaseMonteCarlo):
         temperature=298.15,
         pressure=1.0,
         fugacity_coeff=1.0,
+        n_procs: int = 1,
         components: Union[list, dict] = None,
         dist_threshold: Union[dict, list, float, int, str, None] = 0.8,
         ase_calculator=None,  # TODO typehint
@@ -203,6 +204,7 @@ class MonteCarlo(_BaseMonteCarlo):
             openmm_potential=openmm_potential,
             random_seed=random_seed,
         )
+        self.n_procs = n_procs  # TODO move to base class
         self.moves = moves
         self.temperature = temperature
         self.pressure = pressure
@@ -225,17 +227,18 @@ class MonteCarlo(_BaseMonteCarlo):
             Number of stored structures.
         """
         self._prepare_structure()
+        self.moves = [move() if isinstance(move, type) else move for move in self.moves]
         step = 0
         while step < n_steps:
             move_idx = int(self.rng.random() * len(self.moves))
-            move = self.moves[move_idx](
-                structure=self.structure,
-                components=self._components,
-                component_indices=self._component_indices,
-                dist_threshold=self.dist_threshold,
-                ase_calculator=self.ase_calculator,
-                openmm_potential=self.openmm_potential,
-            )
+            move = self.moves[move_idx]
+            move.n_procs = self.n_procs
+            move.structure = self.structure
+            move.new_structure = None
+            move.components = self._components
+            move.component_indices = copy.deepcopy(self._component_indices)
+            move.dist_threshold = self.dist_threshold
+            move.ase_calculator = self.ase_calculator
             move.perform_move([self.rng.random() for _ in range(self.moves[move_idx].n_rand_nrs)])
             if move.new_structure is None:
                 continue
@@ -275,6 +278,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
         structure,
         components: Union[list, dict] = None,
         temperature: float = 298.15,
+        n_procs: int = 1,
         dist_threshold: Union[dict, list, float, int, str, None] = 0.8,
         ase_calculator=None,
         openmm_potential=None,
@@ -292,6 +296,7 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
             openmm_potential=openmm_potential,
             random_seed=random_seed,
         )
+        self.n_procs = n_procs  # TODO move to base class
         self.use_molecule_geometry = use_molecule_geometry
         self.use_coord_insertion = use_coord_insertion
         self.structures = []  # TODO move to base class.
@@ -324,15 +329,13 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
 
             # Calculate deletion energy:
             if sum(self.n_molecules) > 0:
-                del_move = DeleteComponent(
-                    structure=self.structure,
-                    components=self._components,
-                    component_indices=self._component_indices,
-                    dist_threshold=self.dist_threshold,
-                    ase_calculator=self.ase_calculator,
-                    openmm_potential=self.openmm_potential,
-                )
-                rand_nrs = [self.rng.random() for _ in range(DeleteComponent.n_rand_nrs)]
+                del_move = DeleteComponent()
+                del_move.structure = self.structure
+                del_move.components = self._components
+                del_move.component_indices = copy.deepcopy(self._component_indices)
+                del_move.dist_threshold = self.dist_threshold
+                del_move.ase_calculator = self.ase_calculator
+                rand_nrs = [self.rng.random() for _ in range(del_move.n_rand_nrs)]
                 del_move.set_random_mol_index(rand_nrs[0])
                 del_indices = del_move.component_indices[del_move.component_index[0]][
                     del_move.component_index[1]
@@ -360,18 +363,18 @@ class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
 
             # Calculate insertion energy:
             for i in range(1000):
-                ins_move = ins_class(
-                    structure=self.structure,
-                    components=self._components,
-                    component_indices=self._component_indices,
-                    dist_threshold=self.dist_threshold,
-                    ase_calculator=self.ase_calculator,
-                    openmm_potential=self.openmm_potential,
-                )
-                rand_nrs = [self.rng.random() for _ in range(ins_class.n_rand_nrs)]
+                ins_move = ins_class()
+                ins_move.structure = self.structure
+                ins_move.components = self._components
+                ins_move.component_indices = copy.deepcopy(self._component_indices)
+                ins_move.dist_threshold = self.dist_threshold
+                ins_move.ase_calculator = self.ase_calculator
+                ins_move.n_procs = self.n_procs
+                rand_nrs = [self.rng.random() for _ in range(ins_move.n_rand_nrs)]
                 ins_move.perform_move(rand_nrs)
                 if ins_move.new_structure is not None:
                     break
+            print(f"Needed {i} moves.")
             if ins_move.new_structure is None:
                 raise ValueError("Could not insert molecule, structure seems too aggregated.")
             ins_indices = ins_move.component_indices[ins_move.component_index[0]][-1]
