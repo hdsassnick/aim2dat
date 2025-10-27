@@ -3,6 +3,7 @@
 # Standard library imports
 from typing import Union
 import copy
+import os
 
 # Third party library imports
 import numpy as np
@@ -11,6 +12,7 @@ import numpy as np
 from aim2dat.strct import Structure
 from aim2dat.mc.moves import InsertComponent, InsertComponentCoord, DeleteComponent
 from aim2dat.strct.ext_manipulation import add_structure_random, DistanceThresholdError
+from aim2dat.io import read_yaml_file, write_yaml_file
 from aim2dat.utils.print import _print_dict
 
 
@@ -180,6 +182,8 @@ class _BaseMonteCarlo:
 class MonteCarlo(_BaseMonteCarlo):
     """Conventional Monte Carlo simulation engine with a fixed number of molecules."""
 
+    # TODO add function to reset class.
+
     def __init__(
         self,
         structure: Structure,
@@ -193,6 +197,7 @@ class MonteCarlo(_BaseMonteCarlo):
         ase_calculator=None,  # TODO typehint
         openmm_potential=None,  # TODO typehint
         random_seed: int = None,
+        use_restart: bool = True,
     ):
         """Initialize class."""
         _BaseMonteCarlo.__init__(
@@ -209,11 +214,64 @@ class MonteCarlo(_BaseMonteCarlo):
         self.temperature = temperature
         self.pressure = pressure
         self.fugacity_coeff = fugacity_coeff
+        self.use_restart = use_restart
+
+        self._restart_prefix = (
+            "MC_restart" if self.structure.label is None else "MC_restart_" + self.structure.label
+        )
 
         self.move_statistics = [[0, 0] for _ in range(len(moves))]
         self.uptake = []
 
-    def run(self, n_steps: int, n_print: int = 10, n_store: int = 10):
+    def load_from_restart_file(self, check_conditions=True):
+        """
+        Set simulation parameters from restart file.
+
+        Parameters
+        ----------
+        check_conditions : bool
+            Check if the initially set simulation parameters coincide with the ones from the
+            restart file.
+        """
+        if not self.use_restart:
+            return None
+
+        restart_files = [
+            (os.path.getmtime(os.getcwd() + f"/{f}"), f)
+            for f in os.listdir(os.getcwd())
+            if self._restart_prefix in f
+        ]
+        restart_files.sort(key=lambda point: point[0])
+        for _, f in restart_files:
+            restart_dict = read_yaml_file(os.getcwd() + f"/{f}")
+            if not isinstance(restart_dict, dict):
+                continue
+            if any(
+                key not in restart_dict
+                for key in [
+                    "start_step",
+                    "temperature",
+                    "pressure",
+                    "fugacity_coeff",
+                    "structure",
+                    "component_indices",
+                    "uptake",
+                    "move_statistics",
+                    "rng",
+                ]
+            ):
+                continue
+            if check_conditions and (
+                self.temperature != restart_dict["temperature"]
+                or self.pressure != restart_dict["pressure"]
+                or self.fugacity_coeff != restart_dict["fugacity_coeff"]
+            ):
+                continue
+
+            print(f"Found suitable restart file: '{f}'.")
+            return restart_dict
+
+    def run(self, n_steps: int, n_print: int = 10, n_store: int = 10, restart_interval: int = 10):
         """
         Run simulation.
 
@@ -225,10 +283,27 @@ class MonteCarlo(_BaseMonteCarlo):
             Number of print statements.
         n_store : int
             Number of stored structures.
+        restart_interval : int
+            Interval at which a restart file is written to disc.
         """
-        self._prepare_structure()
         self.moves = [move() if isinstance(move, type) else move for move in self.moves]
         step = 0
+
+        # Handling restarts:
+        restart_dict = self.load_from_restart_file(check_conditions=True)
+        if restart_dict is None:
+            self._prepare_structure()
+        else:
+            step = restart_dict["start_step"]
+            self.temperature = restart_dict["temperature"]
+            self.pressure = restart_dict["pressure"]
+            self.fugacity_coeff = restart_dict["fugacity_coeff"]
+            self.structure = Structure(**restart_dict["structure"])
+            self._component_indices = restart_dict["component_indices"]  # TODO check for tuples?
+            self.uptake = restart_dict["uptake"]
+            self.move_statistics = restart_dict["move_statistics"]
+            self.rng.bit_generator.state = restart_dict["rng"]
+
         while step < n_steps:
             move_idx = int(self.rng.random() * len(self.moves))
             move = self.moves[move_idx]
@@ -267,6 +342,30 @@ class MonteCarlo(_BaseMonteCarlo):
                 n_print,
                 n_store,
             )
+            if self.use_restart and (restart_interval == 0 or (step + 1) % restart_interval == 0):
+                restart_dict = {
+                    "start_step": step + 1,
+                    "temperature": self.temperature,
+                    "pressure": self.pressure,
+                    "fugacity_coeff": self.fugacity_coeff,
+                    "structure": self.structure.to_dict(),
+                    "component_indices": self._component_indices,
+                    "uptake": self.uptake,
+                    "move_statistics": self.move_statistics,
+                    "rng": self.rng.bit_generator.state,
+                }
+                restart_files = [f for f in os.listdir(os.getcwd()) if self._restart_prefix in f]
+                if len(restart_files) < 3:
+                    file_name = f"{self._restart_prefix}_{len(restart_files)}.yaml"
+                else:
+                    time_stamp = os.path.getmtime(restart_files[0])
+                    file_name = restart_files[0]
+                    for f in restart_files[1:]:
+                        ts = os.path.getmtime(f)
+                        if ts < time_stamp:
+                            file_name = f
+                            time_stamp = ts
+                write_yaml_file(os.getcwd() + "/" + file_name, restart_dict)
             step += 1
 
 
