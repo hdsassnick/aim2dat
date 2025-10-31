@@ -54,7 +54,7 @@ class _BaseMonteCarlo:
     @property
     def n_molecules(self):
         # TODO doc strings
-        return tuple([c["n_molecules"] for c in self._components])
+        return tuple([len(c_i) for c_i in self._component_indices])
 
     @property
     def component_labels(self):
@@ -165,7 +165,9 @@ class _BaseMonteCarlo:
             else:
                 self._component_indices.append(comp_indices)
 
-    def _postprocess_step(self, step, output_dict, n_steps, n_print, n_store, structure=None):
+    def _postprocess_step(
+        self, step, output_dict, n_steps, n_print, n_store, step_type="Step", structure=None
+    ):
         store_interval = int(n_steps / n_store)
         print_interval = int(n_steps / n_print)
         if store_interval == 0 or (step + 1) % store_interval == 0:
@@ -174,7 +176,9 @@ class _BaseMonteCarlo:
         if print_interval == 0 or (step + 1) % print_interval == 0:
             step_str = " ".join([""] * (8 - len(str(step + 1)))) + str(step + 1)
             print(
-                _print_dict(f"Step {step_str} |", output_dict, inline=True, float_precision=5),
+                _print_dict(
+                    f"{step_type} {step_str} |", output_dict, inline=True, float_precision=5
+                ),
                 flush=True,
             )
 
@@ -241,7 +245,7 @@ class MonteCarlo(_BaseMonteCarlo):
             for f in os.listdir(os.getcwd())
             if self._restart_prefix in f
         ]
-        restart_files.sort(key=lambda point: point[0])
+        restart_files.sort(key=lambda point: point[0], reverse=True)
         for _, f in restart_files:
             restart_dict = read_yaml_file(os.getcwd() + f"/{f}")
             if not isinstance(restart_dict, dict):
@@ -250,6 +254,7 @@ class MonteCarlo(_BaseMonteCarlo):
                 key not in restart_dict
                 for key in [
                     "start_step",
+                    "start_cycle",
                     "temperature",
                     "pressure",
                     "fugacity_coeff",
@@ -271,7 +276,14 @@ class MonteCarlo(_BaseMonteCarlo):
             print(f"Found suitable restart file: '{f}'.")
             return restart_dict
 
-    def run(self, n_steps: int, n_print: int = 10, n_store: int = 10, restart_interval: int = 10):
+    def run(
+        self,
+        n_steps: int = 0,
+        n_cycles: int = 0,
+        n_print: int = 10,
+        n_store: int = 10,
+        restart_interval: int = 10,
+    ):
         """
         Run simulation.
 
@@ -279,6 +291,11 @@ class MonteCarlo(_BaseMonteCarlo):
         ----------
         n_steps : int
             Number of steps.
+        n_cycles : int
+            Number of cycles. This parameter overwrites ``n_steps``, defined the number of steps
+            dynamically based on the number of guest molecules. Each cycle then consists of
+            ``max(1, n_molelcules)`` steps (similar to the implementation in RASPA where the
+            minimum number of steps per cycle is set to 20).
         n_print : int
             Number of print statements.
         n_store : int
@@ -288,12 +305,15 @@ class MonteCarlo(_BaseMonteCarlo):
         """
         self.moves = [move() if isinstance(move, type) else move for move in self.moves]
         step = 0
+        cycle = 0
 
-        # Handling restarts:
+        # Handle restart files:
         restart_dict = self.load_from_restart_file(check_conditions=True)
         if restart_dict is None:
             self._prepare_structure()
         else:
+            if n_cycles > 0:
+                cycle = restart_dict["start_cycle"]
             step = restart_dict["start_step"]
             self.temperature = restart_dict["temperature"]
             self.pressure = restart_dict["pressure"]
@@ -304,6 +324,18 @@ class MonteCarlo(_BaseMonteCarlo):
             self.move_statistics = restart_dict["move_statistics"]
             self.rng.bit_generator.state = restart_dict["rng"]
 
+        # Check and set n_steps/n_cycles:
+        if n_steps > 0:
+            step_type = "Step"
+            n_steps_print = n_steps
+        elif n_cycles > 0:
+            step_type = "Cycle"
+            n_steps_print = n_cycles
+            n_steps = max(1, sum(self.n_molecules))
+        else:
+            raise ValueError("Either `n_steps` or `n_cycles` need to be larger than 0.")
+
+        # Start MC run:
         while step < n_steps:
             move_idx = int(self.rng.random() * len(self.moves))
             move = self.moves[move_idx]
@@ -329,44 +361,56 @@ class MonteCarlo(_BaseMonteCarlo):
 
             self.move_statistics[move_idx][1] += 1
             self.uptake.append(len(self._component_indices[0]))
-            self._postprocess_step(
-                step,
-                {
-                    "Energy": self.structure.attributes.get("ref_energy", 0.0),
-                    "Delta E": move.energy_difference,
-                    "n_comp": len(self._component_indices[0]),
-                    "Move": move.name,
-                    "Accepted": accepted,
-                },
-                n_steps,
-                n_print,
-                n_store,
-            )
-            if self.use_restart and (restart_interval == 0 or (step + 1) % restart_interval == 0):
-                restart_dict = {
-                    "start_step": step + 1,
-                    "temperature": self.temperature,
-                    "pressure": self.pressure,
-                    "fugacity_coeff": self.fugacity_coeff,
-                    "structure": self.structure.to_dict(),
-                    "component_indices": self._component_indices,
-                    "uptake": self.uptake,
-                    "move_statistics": self.move_statistics,
-                    "rng": self.rng.bit_generator.state,
-                }
-                restart_files = [f for f in os.listdir(os.getcwd()) if self._restart_prefix in f]
-                if len(restart_files) < 3:
-                    file_name = f"{self._restart_prefix}_{len(restart_files)}.yaml"
-                else:
-                    time_stamp = os.path.getmtime(restart_files[0])
-                    file_name = restart_files[0]
-                    for f in restart_files[1:]:
-                        ts = os.path.getmtime(f)
-                        if ts < time_stamp:
-                            file_name = f
-                            time_stamp = ts
-                write_yaml_file(os.getcwd() + "/" + file_name, restart_dict)
+            if n_cycles == 0 or (step == n_steps - 1):
+                step_print = cycle if n_cycles > 0 else step
+                self._postprocess_step(
+                    step_print,
+                    {
+                        "Energy": self.structure.attributes.get("ref_energy", 0.0),
+                        "Delta E": move.energy_difference,
+                        "n_comp": len(self._component_indices[0]),
+                        "Move": move.name,
+                        "Accepted": accepted,
+                    },
+                    n_steps_print,
+                    n_print,
+                    n_store,
+                    step_type=step_type,
+                )
+                if self.use_restart and (
+                    restart_interval == 0 or (step_print + 1) % restart_interval == 0
+                ):
+                    restart_dict = {
+                        "start_step": step + 1,
+                        "start_cycle": cycle,
+                        "temperature": self.temperature,
+                        "pressure": self.pressure,
+                        "fugacity_coeff": self.fugacity_coeff,
+                        "structure": self.structure.to_dict(),
+                        "component_indices": self._component_indices,
+                        "uptake": self.uptake,
+                        "move_statistics": self.move_statistics,
+                        "rng": self.rng.bit_generator.state,
+                    }
+                    restart_files = [
+                        f for f in os.listdir(os.getcwd()) if self._restart_prefix in f
+                    ]
+                    if len(restart_files) < 3:
+                        file_name = f"{self._restart_prefix}_{len(restart_files)}.yaml"
+                    else:
+                        time_stamp = os.path.getmtime(restart_files[0])
+                        file_name = restart_files[0]
+                        for f in restart_files[1:]:
+                            ts = os.path.getmtime(f)
+                            if ts < time_stamp:
+                                file_name = f
+                                time_stamp = ts
+                    write_yaml_file(os.getcwd() + "/" + file_name, restart_dict)
             step += 1
+            if cycle < n_cycles - 1 and step == n_steps:
+                step = 0
+                n_steps = max(1, sum(self.n_molecules))
+                cycle += 1
 
 
 class TransitionMatrixMonteCarlo(_BaseMonteCarlo):
