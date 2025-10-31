@@ -336,7 +336,8 @@ class MonteCarlo(_BaseMonteCarlo):
             raise ValueError("Either `n_steps` or `n_cycles` need to be larger than 0.")
 
         # Start MC run:
-        while step < n_steps:
+        print(f"{cycle}/{n_cycles}, {step}/{n_steps}")
+        while step < n_steps or cycle < n_cycles - 1:
             move_idx = int(self.rng.random() * len(self.moves))
             move = self.moves[move_idx]
             move.n_procs = self.n_procs
@@ -407,7 +408,7 @@ class MonteCarlo(_BaseMonteCarlo):
                                 time_stamp = ts
                     write_yaml_file(os.getcwd() + "/" + file_name, restart_dict)
             step += 1
-            if cycle < n_cycles - 1 and step == n_steps:
+            if cycle < n_cycles - 1 and step >= n_steps:
                 step = 0
                 n_steps = max(1, sum(self.n_molecules))
                 cycle += 1
