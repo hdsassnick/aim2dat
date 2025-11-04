@@ -336,7 +336,6 @@ class MonteCarlo(_BaseMonteCarlo):
             raise ValueError("Either `n_steps` or `n_cycles` need to be larger than 0.")
 
         # Start MC run:
-        print(f"{cycle}/{n_cycles}, {step}/{n_steps}")
         while step < n_steps or cycle < n_cycles - 1:
             move_idx = int(self.rng.random() * len(self.moves))
             move = self.moves[move_idx]
